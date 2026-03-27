@@ -121,6 +121,15 @@ label{font-size:12px;color:var(--text2);display:block;margin-bottom:4px}
 .toast.error{background:var(--red)}
 @keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
 .modal-err{font-size:12px;color:var(--red-dark);background:var(--red-bg);border:0.5px solid rgba(226,75,74,0.3);border-radius:var(--radius);padding:8px 11px;margin-bottom:10px}
+.rpt-filters{display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:10px;align-items:end;margin-bottom:1.25rem}
+@media(max-width:680px){.rpt-filters{grid-template-columns:1fr 1fr}}
+.rpt-kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:1rem}
+@media(max-width:680px){.rpt-kpi-row{grid-template-columns:repeat(2,1fr)}}
+.rpt-table{width:100%;border-collapse:collapse;font-size:13px}
+.rpt-table th{text-align:left;font-size:11px;font-weight:600;color:var(--text2);padding:0 10px 8px;text-transform:uppercase;letter-spacing:0.04em;border-bottom:0.5px solid var(--border2);white-space:nowrap}
+.rpt-table td{padding:9px 10px;border-bottom:0.5px solid var(--border);vertical-align:top}
+.rpt-table tbody tr:last-child td{border-bottom:none}
+.rpt-table tbody tr:hover td{background:var(--bg2)}
 </style>
 </head>
 <body>
@@ -165,7 +174,8 @@ let ST = {
   auth:null, busId:null, tab:'log', selTire:null,
   modal:null, logFilter:'all', tirePrePos:null, tirePreEvent:null,
   loginCity:null, loginErr:'', saving:false,
-  adminFilter:'all', buses:[], logs:[], toast:null, toastType:null, modalErr:''
+  adminFilter:'all', buses:[], logs:[], toast:null, toastType:null, modalErr:'',
+  view:'fleet', rptBus:'all', rptType:'all', rptFrom:'', rptTo:''
 };
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
@@ -235,6 +245,15 @@ function getAlerts(bus){
   return alerts;
 }
 
+function applyReportFilters(){
+  let rows=[...ST.logs];
+  if(ST.rptBus!=='all') rows=rows.filter(l=>(l.bus_id||l.busId)===ST.rptBus);
+  if(ST.rptType!=='all') rows=rows.filter(l=>l.type===ST.rptType);
+  if(ST.rptFrom) rows=rows.filter(l=>l.date>=ST.rptFrom);
+  if(ST.rptTo)   rows=rows.filter(l=>l.date<=ST.rptTo);
+  return rows.sort((a,b)=>b.date.localeCompare(a.date)||(b.ts||0)-(a.ts||0));
+}
+
 // ─── RENDER ──────────────────────────────────────────────────────────────────
 function render(){
   document.getElementById('root').innerHTML = ST.auth ? renderApp() : renderLogin();
@@ -279,7 +298,7 @@ async function doLogin(){
 
 async function doLogout(){
   await sb.auth.signOut();
-  ST.auth=null; ST.busId=null; ST.buses=[]; ST.logs=[]; ST.adminFilter='all';
+  ST.auth=null; ST.busId=null; ST.buses=[]; ST.logs=[]; ST.adminFilter='all'; ST.view='fleet';
   render();
 }
 
@@ -294,40 +313,119 @@ function renderApp(){
       <option value="all">Todas las ciudades</option>
       ${Object.entries(CITIES).filter(([k])=>k!=='admin').map(([k,v])=>`<option value="${k}">${v.name}</option>`).join('')}
     </select>`:`<span class="city-badge">${CITIES[ST.auth]?.name}</span>`}
+    <button class="btn sm${ST.view==='report'?' primary':''}" onclick="ST.view=ST.view==='report'?'fleet':'report';render()">Reportes</button>
     <button class="btn sm" onclick="ST.modal='bus';render()">+ Unidad</button>
     <button class="btn sm ghost" onclick="doLogout()">Salir</button>
   </div>`;
 
-  const shown=isAdmin&&ST.adminFilter!=='all'?buses.filter(b=>b.city===ST.adminFilter):buses;
-
-  h+=`<div class="fleet-grid">`;
-  shown.forEach(b=>{
-    const al=getAlerts(b);
-    h+=`<div class="bus-chip${ST.busId===b.id?' active':''}" onclick="selectBus('${b.id}')">
-      <div class="cn">${b.name}${al.length?`<span class="alert-dot"></span>`:''}
-      </div><div class="cm">${b.client}${isAdmin?' · '+CITIES[b.city]?.name:''}<br>${fmt(b.km)} km</div>
-    </div>`;
-  });
-  h+=`<div class="bus-chip chip-add" onclick="ST.modal='bus';render()">+ Nueva unidad</div></div>`;
-
-  if(!bus){
-    h+=`<div class="empty-state">Selecciona una unidad arriba para ver su historial</div>`;
+  if(ST.view==='report'){
+    h+=renderReport();
   } else {
-    const al=getAlerts(bus);
-    if(al.length) h+=`<div class="alert-bar">⚠ ${al.join(' &nbsp;·&nbsp; ')}</div>`;
-    h+=`<div class="tab-row">
-      <button class="tab${ST.tab==='log'?' active':''}" onclick="ST.tab='log';render()">Historial</button>
-      <button class="tab${ST.tab==='tires'?' active':''}" onclick="ST.tab='tires';render()">Llantas</button>
-      <button class="tab${ST.tab==='stats'?' active':''}" onclick="ST.tab='stats';render()">Resumen</button>
-    </div>`;
-    if(ST.tab==='log')   h+=renderLog(bus);
-    if(ST.tab==='tires') h+=renderTires(bus);
-    if(ST.tab==='stats') h+=renderStats(bus);
+    const shown=isAdmin&&ST.adminFilter!=='all'?buses.filter(b=>b.city===ST.adminFilter):buses;
+    h+=`<div class="fleet-grid">`;
+    shown.forEach(b=>{
+      const al=getAlerts(b);
+      h+=`<div class="bus-chip${ST.busId===b.id?' active':''}" onclick="selectBus('${b.id}')">
+        <div class="cn">${b.name}${al.length?`<span class="alert-dot"></span>`:''}
+        </div><div class="cm">${b.client}${isAdmin?' · '+CITIES[b.city]?.name:''}<br>${fmt(b.km)} km</div>
+      </div>`;
+    });
+    h+=`<div class="bus-chip chip-add" onclick="ST.modal='bus';render()">+ Nueva unidad</div></div>`;
+    if(!bus){
+      h+=`<div class="empty-state">Selecciona una unidad arriba para ver su historial</div>`;
+    } else {
+      const al=getAlerts(bus);
+      if(al.length) h+=`<div class="alert-bar">⚠ ${al.join(' &nbsp;·&nbsp; ')}</div>`;
+      h+=`<div class="tab-row">
+        <button class="tab${ST.tab==='log'?' active':''}" onclick="ST.tab='log';render()">Historial</button>
+        <button class="tab${ST.tab==='tires'?' active':''}" onclick="ST.tab='tires';render()">Llantas</button>
+        <button class="tab${ST.tab==='stats'?' active':''}" onclick="ST.tab='stats';render()">Resumen</button>
+      </div>`;
+      if(ST.tab==='log')   h+=renderLog(bus);
+      if(ST.tab==='tires') h+=renderTires(bus);
+      if(ST.tab==='stats') h+=renderStats(bus);
+    }
   }
 
   if(ST.modal==='log'  && bus) h+=renderLogModal(bus);
   if(ST.modal==='tire' && bus) h+=renderTireModal(bus);
   if(ST.modal==='bus')         h+=renderBusModal();
+  return h;
+}
+
+function renderReport(){
+  const buses=cityBuses().slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const rows=applyReportFilters();
+  const totalCost=rows.reduce((s,l)=>s+(l.cost||0),0);
+  const uniqBuses=new Set(rows.map(l=>l.bus_id||l.busId)).size;
+  const typeColors={oil:'var(--green)',repair:'var(--red)',km:'var(--blue)',tire:'var(--amber)'};
+  const typeLabels={...LOG_TYPES,tire:'Llanta'};
+  const hasFilters=ST.rptBus!=='all'||ST.rptType!=='all'||ST.rptFrom||ST.rptTo;
+
+  let h=`<div class="card">
+    <div class="section-hdr" style="margin-bottom:1rem"><h4>Filtros</h4>
+      ${hasFilters?`<button class="btn sm ghost" onclick="ST.rptBus='all';ST.rptType='all';ST.rptFrom='';ST.rptTo='';render()">Limpiar filtros</button>`:''}
+    </div>
+    <div class="rpt-filters">
+      <div class="form-row" style="margin:0"><label>Unidad</label>
+        <select onchange="ST.rptBus=this.value;render()">
+          <option value="all">Todas las unidades</option>
+          ${buses.map(b=>`<option value="${b.id}"${ST.rptBus===b.id?' selected':''}>${b.name}</option>`).join('')}
+        </select></div>
+      <div class="form-row" style="margin:0"><label>Tipo de servicio</label>
+        <select onchange="ST.rptType=this.value;render()">
+          <option value="all">Todos los tipos</option>
+          ${Object.entries(typeLabels).map(([k,v])=>`<option value="${k}"${ST.rptType===k?' selected':''}>${v}</option>`).join('')}
+        </select></div>
+      <div class="form-row" style="margin:0"><label>Desde</label>
+        <input type="date" value="${ST.rptFrom}" onchange="ST.rptFrom=this.value;render()"></div>
+      <div class="form-row" style="margin:0"><label>Hasta</label>
+        <input type="date" value="${ST.rptTo}" onchange="ST.rptTo=this.value;render()"></div>
+      <div><button class="btn" style="width:100%" onclick="ST.rptBus='all';ST.rptType='all';ST.rptFrom='';ST.rptTo='';render()">↺</button></div>
+    </div>
+  </div>`;
+
+  h+=`<div class="rpt-kpi-row">
+    <div class="kpi"><div class="kl">Registros</div><div class="kv">${rows.length}</div><div class="ks">en filtro actual</div></div>
+    <div class="kpi"><div class="kl">Gasto total</div><div class="kv">${mxn(totalCost)}</div><div class="ks">filtrado</div></div>
+    <div class="kpi"><div class="kl">Promedio por registro</div><div class="kv">${rows.length?mxn(Math.round(totalCost/rows.length)):'—'}</div><div class="ks">con costo</div></div>
+    <div class="kpi"><div class="kl">Unidades</div><div class="kv">${uniqBuses}</div><div class="ks">distintas en resultados</div></div>
+  </div>`;
+
+  if(!rows.length){
+    h+=`<div class="empty-state">Sin registros para los filtros seleccionados</div>`;
+    return h;
+  }
+
+  h+=`<div class="card" style="overflow-x:auto;padding:0">
+    <table class="rpt-table">
+      <thead><tr>
+        <th style="padding-left:1.25rem">Fecha</th>
+        <th>Unidad</th>
+        <th>Tipo</th>
+        <th>Descripción</th>
+        <th style="text-align:right">KM</th>
+        <th>Técnico</th>
+        <th style="text-align:right;padding-right:1.25rem">Costo</th>
+      </tr></thead>
+      <tbody>`;
+  rows.forEach(l=>{
+    const bus=ST.buses.find(b=>b.id===(l.bus_id||l.busId));
+    const km=l.km_after||l.kmAfter;
+    h+=`<tr>
+      <td style="padding-left:1.25rem;white-space:nowrap;color:var(--text2)">${l.date}</td>
+      <td style="font-weight:500;white-space:nowrap">${bus?.name||'—'}</td>
+      <td><span style="display:inline-flex;align-items:center;gap:5px"><span style="width:7px;height:7px;border-radius:50%;background:${typeColors[l.type]||'var(--text3)'};flex-shrink:0;display:inline-block"></span>${typeLabels[l.type]||l.type}</span></td>
+      <td style="color:var(--text2);max-width:240px">${l.description||l.desc||'—'}</td>
+      <td style="text-align:right;color:var(--text2);white-space:nowrap">${km?fmt(km)+' km':'—'}</td>
+      <td style="color:var(--text2)">${l.technician||l.tech||'—'}</td>
+      <td style="text-align:right;font-weight:${l.cost?600:400};padding-right:1.25rem;white-space:nowrap;color:${l.cost?'var(--text)':'var(--text3)'}">${l.cost?mxn(l.cost):'—'}</td>
+    </tr>`;
+  });
+  h+=`</tbody></table></div>
+  <div style="display:flex;justify-content:flex-end;margin-top:0.75rem">
+    <button class="btn primary" onclick="exportCSV()">↓ Exportar CSV</button>
+  </div>`;
   return h;
 }
 
@@ -748,6 +846,34 @@ async function doDelBus(id){
   ST.busId=null; render();
   const {error}=await dbDeleteBus(id);
   if(error){ ST.buses=prevBuses; ST.logs=prevLogs; ST.busId=id; showToast('Error al eliminar. Intenta de nuevo.','error'); }
+}
+
+function exportCSV(){
+  const rows=applyReportFilters();
+  if(!rows.length) return;
+  const typeLabels={...LOG_TYPES,tire:'Llanta'};
+  const headers=['Fecha','Unidad','Ciudad','Cliente','Tipo','Descripcion','KM','Tecnico','Costo MXN'];
+  const lines=[headers.join(',')];
+  rows.forEach(l=>{
+    const bus=ST.buses.find(b=>b.id===(l.bus_id||l.busId));
+    const cells=[
+      l.date,
+      `"${(bus?.name||'').replace(/"/g,'""')}"`,
+      CITIES[bus?.city]?.name||bus?.city||'',
+      bus?.client||'',
+      typeLabels[l.type]||l.type,
+      `"${(l.description||l.desc||'').replace(/"/g,'""')}"`,
+      l.km_after||l.kmAfter||'',
+      `"${(l.technician||l.tech||'').replace(/"/g,'""')}"`,
+      l.cost||0
+    ];
+    lines.push(cells.join(','));
+  });
+  const blob=new Blob(['\uFEFF'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=`reporte_ate_${today()}.csv`; a.click();
+  URL.revokeObjectURL(url);
 }
 
 // keyboard shortcut: Enter on password field
