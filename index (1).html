@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Grupo ATE — Control de Flota</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#ffffff;--bg2:#f7f7f5;--bg3:#f0f0ec;
+  --text:#1a1a1a;--text2:#666;--text3:#999;
+  --border:rgba(0,0,0,0.12);--border2:rgba(0,0,0,0.22);
+  --blue:#378ADD;--blue-dark:#185FA5;--blue-bg:#E6F1FB;
+  --green:#639922;--green-bg:#EAF3DE;--green-dark:#27500A;
+  --amber:#EF9F27;--amber-bg:#FAEEDA;--amber-dark:#633806;
+  --red:#E24B4A;--red-bg:#FCEBEB;--red-dark:#791F1F;
+  --radius:8px;--radius-lg:12px;
+}
+@media(prefers-color-scheme:dark){
+  :root{
+    --bg:#1e1e1c;--bg2:#2a2a28;--bg3:#323230;
+    --text:#f0f0ec;--text2:#aaa;--text3:#666;
+    --border:rgba(255,255,255,0.12);--border2:rgba(255,255,255,0.22);
+    --blue-bg:#0c2a42;--green-bg:#1a2d0a;--amber-bg:#2d1f06;--red-bg:#2d0f0f;
+  }
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg3);color:var(--text);font-size:14px;min-height:100vh}
+.wrap{max-width:960px;margin:0 auto;padding:1rem}
+button,input,select,textarea{font-family:inherit;font-size:13px}
+input,select,textarea{background:var(--bg);color:var(--text);border:0.5px solid var(--border2);border-radius:var(--radius);padding:8px 11px;width:100%}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(55,138,221,0.15)}
+label{font-size:12px;color:var(--text2);display:block;margin-bottom:4px}
+.btn{padding:8px 16px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);cursor:pointer;font-weight:500;white-space:nowrap}
+.btn:hover{background:var(--bg2)}.btn:active{transform:scale(0.98)}
+.btn.primary{background:var(--blue);color:#fff;border-color:var(--blue-dark)}
+.btn.primary:hover{background:var(--blue-dark)}
+.btn.danger{color:var(--red-dark);border-color:rgba(226,75,74,0.4)}
+.btn.danger:hover{background:var(--red-bg)}
+.btn.ghost{border-color:transparent;color:var(--text2)}
+.btn.ghost:hover{background:var(--bg2);border-color:var(--border)}
+.btn.sm{padding:5px 11px;font-size:12px}
+.btn.full{width:100%}
+.card{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:1.25rem;margin-bottom:12px}
+.nav{display:flex;align-items:center;gap:10px;padding:1rem 0 0.75rem;margin-bottom:1.25rem;border-bottom:0.5px solid var(--border);flex-wrap:wrap}
+.nav-brand{font-size:15px;font-weight:600;flex:1;min-width:100px;color:var(--text)}
+.city-badge{font-size:12px;padding:4px 10px;border-radius:var(--radius);background:var(--bg2);color:var(--text2);border:0.5px solid var(--border)}
+.fleet-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-bottom:1.25rem}
+.bus-chip{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:10px 14px;cursor:pointer;transition:border-color 0.12s}
+.bus-chip:hover{border-color:var(--border2)}
+.bus-chip.active{border-color:var(--blue);background:var(--blue-bg)}
+.bus-chip .cn{font-size:13px;font-weight:600;margin-bottom:2px;display:flex;align-items:center;gap:4px}
+.bus-chip .cm{font-size:11px;color:var(--text2);line-height:1.5}
+.bus-chip.active .cn{color:var(--blue-dark)}
+.chip-add{border-style:dashed;display:flex;align-items:center;justify-content:center;gap:6px;color:var(--text3);font-size:13px;min-height:64px;cursor:pointer}
+.chip-add:hover{color:var(--text2);border-color:var(--border2)}
+.alert-dot{width:7px;height:7px;border-radius:50%;background:var(--red);flex-shrink:0;display:inline-block}
+.tab-row{display:flex;gap:4px;margin-bottom:1rem;border-bottom:0.5px solid var(--border);padding-bottom:0.75rem;flex-wrap:wrap}
+.tab{padding:6px 15px;font-size:13px;border:0.5px solid transparent;border-radius:var(--radius);background:transparent;color:var(--text2);cursor:pointer;font-weight:500}
+.tab.active{background:var(--bg2);color:var(--text);border-color:var(--border)}
+.tab:hover:not(.active){background:var(--bg2)}
+.two-col{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:16px}
+@media(max-width:680px){.two-col{grid-template-columns:1fr}}
+.kpi-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:1rem}
+.kpi{background:var(--bg2);border-radius:var(--radius);padding:10px 12px}
+.kpi .kl{font-size:11px;color:var(--text2);margin-bottom:3px}
+.kpi .kv{font-size:20px;font-weight:600;line-height:1;color:var(--text)}
+.kpi .ks{font-size:11px;color:var(--text3);margin-top:3px}
+.kpi .kv.warn{color:var(--amber-dark)}.kpi .kv.alert{color:var(--red-dark)}
+.log-item{display:grid;grid-template-columns:8px 1fr auto;gap:10px;padding:10px 0;border-bottom:0.5px solid var(--border);align-items:start}
+.log-item:last-child{border-bottom:none}
+.dot{width:8px;height:8px;border-radius:50%;margin-top:5px;flex-shrink:0}
+.d-oil{background:var(--green)}.d-repair{background:var(--red)}.d-km{background:var(--blue)}
+.li-title{font-size:13px;font-weight:500;margin-bottom:2px;color:var(--text)}
+.li-meta{font-size:11px;color:var(--text2)}
+.li-cost{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap}
+.li-cost.zero{font-weight:400;color:var(--text3);font-size:12px}
+.alert-bar{background:var(--amber-bg);border:0.5px solid var(--amber);border-radius:var(--radius);padding:9px 13px;font-size:12px;color:var(--amber-dark);margin-bottom:1rem;line-height:1.6}
+.section-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem}
+.stat-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:0.5px solid var(--border);font-size:13px}
+.stat-row:last-of-type{border-bottom:none}
+.stat-lbl{font-size:12px;color:var(--text2)}
+.pill{display:inline-block;font-size:11px;padding:2px 9px;border-radius:99px;font-weight:600}
+.pill-good{background:var(--green-bg);color:var(--green-dark)}
+.pill-mid{background:var(--amber-bg);color:var(--amber-dark)}
+.pill-worn{background:var(--red-bg);color:var(--red-dark)}
+.pill-empty{background:var(--bg2);color:var(--text3)}
+.tire-wrap{max-width:230px;margin:0 auto 0.75rem}
+.tp-btn{cursor:pointer}.tp-btn:hover rect{opacity:0.8}
+.hist-entry{font-size:12px;padding:5px 0;border-bottom:0.5px solid var(--border);color:var(--text2);line-height:1.5}
+.hist-entry:last-child{border-bottom:none}
+.hist-entry b{color:var(--text);font-weight:500}
+.bar-wrap{margin-bottom:12px}
+.bar-lbl{display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px;color:var(--text)}
+.bar-track{height:6px;background:var(--bg2);border-radius:99px;overflow:hidden}
+.bar-fill{height:100%;border-radius:99px}
+.modal-wrap{background:rgba(0,0,0,0.4);border-radius:var(--radius-lg);padding:1.5rem;margin-top:1rem;display:flex;justify-content:center;align-items:flex-start}
+.modal{background:var(--bg);border:0.5px solid var(--border2);border-radius:var(--radius-lg);padding:1.5rem;width:100%;max-width:460px}
+.modal h3{margin-bottom:1rem;font-size:15px;font-weight:600}
+.modal-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:1.25rem}
+.form-row{margin-bottom:11px}
+.fg2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fg3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1rem}
+.login-box{width:100%;max-width:360px}
+.login-box h1{font-size:22px;font-weight:700;margin-bottom:4px}
+.login-box .sub{font-size:13px;color:var(--text2);margin-bottom:1.75rem;line-height:1.5}
+.city-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:1rem}
+.city-opt{border:0.5px solid var(--border);border-radius:var(--radius);padding:9px 12px;cursor:pointer;text-align:left;background:var(--bg);font-size:13px;color:var(--text);font-weight:500}
+.city-opt:hover{background:var(--bg2)}
+.city-opt.sel{border-color:var(--blue);background:var(--blue-bg);color:var(--blue-dark)}
+.err{font-size:12px;color:var(--red-dark);margin-top:6px;min-height:18px}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty-state{text-align:center;padding:2.5rem 1rem;color:var(--text3);font-size:13px}
+.filter-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:0.75rem}
+.filter-btn{padding:4px 11px;font-size:12px;border:0.5px solid var(--border);border-radius:99px;background:transparent;color:var(--text2);cursor:pointer;font-weight:500}
+.filter-btn.active{background:var(--bg2);color:var(--text);border-color:var(--border2)}
+.loading-screen{display:flex;align-items:center;justify-content:center;min-height:200px;color:var(--text2);font-size:13px;gap:8px}
+</style>
+</head>
+<body>
+<div class="wrap" id="root"><div class="loading-screen"><span class="spinner"></span>Cargando...</div></div>
+
+<script>
+// ─── CONFIG ──────────────────────────────────────────────────────────────────
+// TODO: Replace with your Supabase project URL and anon key
+const SUPABASE_URL = 'https://mxxvphizdhinixnhtulm.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_WB81yFJaOP0p4b7wiCcWDg_ajhjT68G';
+
+const CITIES = {
+  tj: {name:'Tijuana',     pw:'ate2024tj'},
+  mex:{name:'Mexicali',    pw:'ate2024mx'},
+  gdl:{name:'Guadalajara', pw:'ate2024gdl'},
+  ver:{name:'Veracruz',    pw:'ate2024ver'},
+  hgo:{name:'Hidalgo',     pw:'ate2024hgo'},
+  can:{name:'Cancún',      pw:'ate2024can'},
+  mer:{name:'Mérida',      pw:'ate2024mer'},
+  qro:{name:'Querétaro',   pw:'ate2024qro'},
+  admin:{name:'Admin — Todas', pw:'ateADMIN2024'}
+};
+
+const CLIENTS = ['Bimbo','Barcel','Oxxo','Maersk','Sensata','Dreams Jade','Bachoco','Otro'];
+const LOG_TYPES = {oil:'Aceite / Preventivo', repair:'Correctivo', km:'Solo KM'};
+const TIRE_EVENTS = {new:'Llanta nueva', rotate:'Rotación', recap:'Reencauche', retire:'Baja'};
+const OIL_ITEMS = [
+  {id:'aceite',      label:'Aceite',               askType:true},
+  {id:'filtro_ace',  label:'Filtro de aceite',      askType:false},
+  {id:'filtro_aire', label:'Filtro de aire',         askType:false},
+  {id:'filtro_comb', label:'Filtro de combustible',  askType:false},
+  {id:'bujias',      label:'Bujías',                 askType:false},
+  {id:'liq_frenos',  label:'Líquido de frenos',      askType:false},
+  {id:'refrigerante',label:'Refrigerante',            askType:false},
+  {id:'transmision', label:'Transmisión / diferencial',askType:false},
+];
+const OIL_TYPES = ['5W-30','5W-40','15W-40','10W-40','0W-20','Otro'];
+
+const POS_CFG = [
+  {id:'FL', lbl:'Del\nIzq', x:26,y:46,w:22,h:42,spare:false},
+  {id:'FR', lbl:'Del\nDer', x:192,y:46,w:22,h:42,spare:false},
+  {id:'RLI',lbl:'TLI',     x:26,y:176,w:22,h:42,spare:false},
+  {id:'RLO',lbl:'TLE',     x:2, y:176,w:22,h:42,spare:false},
+  {id:'RRI',lbl:'TRI',     x:192,y:176,w:22,h:42,spare:false},
+  {id:'RRO',lbl:'TRE',     x:216,y:176,w:22,h:42,spare:false},
+  {id:'SP', lbl:'Ref',     x:80,y:274,w:80,h:22,spare:true},
+];
+const URVAN_POS = new Set(['FL','FR','RLO','RRO','SP']);
+const POS_NAMES = {FL:'Delantera izquierda',FR:'Delantera derecha',RLI:'Trasera izq. interior',
+  RLO:'Trasera izq. exterior',RRI:'Trasera der. interior',RRO:'Trasera der. exterior',SP:'Refacción'};
+
+// ─── STATE ───────────────────────────────────────────────────────────────────
+let sb = null;
+let ST = {
+  auth:null, busId:null, tab:'log', selTire:null,
+  modal:null, logFilter:'all', tirePrePos:null, tirePreEvent:null,
+  loginCity:null, loginErr:'', saving:false,
+  adminFilter:'all', buses:[], logs:[]
+};
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+async function init(){
+  try {
+    sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const {data:buses, error} = await sb.from('buses').select('*');
+    if(error){ console.warn('Supabase error, using localStorage:', error.message); useLocalStorage(); }
+    else {
+      const {data:logs} = await sb.from('service_logs').select('*').order('date',{ascending:false});
+      ST.buses = buses||[];
+      ST.logs  = logs||[];
+      if(ST.buses.length===0){ seedData(); await pushSeedToSupabase(); }
+    }
+  } catch(e){ console.warn('Supabase unreachable, using localStorage:', e); useLocalStorage(); }
+  render();
+}
+
+async function pushSeedToSupabase(){
+  for(const bus of ST.buses){
+    await sb.from('buses').upsert(bus);
+  }
+}
+
+// ─── LOCAL STORAGE FALLBACK (used until Supabase is configured) ──────────────
+const LS_KEY = 'ate_fleet_ls_v1';
+function useLocalStorage(){
+  sb = null;
+  const saved = localStorage.getItem(LS_KEY);
+  if(saved){ const d = JSON.parse(saved); ST.buses=d.buses||[]; ST.logs=d.logs||[]; }
+  else { seedData(); }
+}
+function saveLS(){ localStorage.setItem(LS_KEY, JSON.stringify({buses:ST.buses, logs:ST.logs})); }
+
+function seedData(){
+  const seed = [
+    {city:'tj',  name:'Toreto 79',    client:'Sensata',     type:'bus',   km:187430},
+    {city:'tj',  name:'Toreto 141',   client:'Bimbo',       type:'bus',   km:203110},
+    {city:'tj',  name:'Toreto 544',   client:'Bimbo',       type:'bus',   km:241800},
+    {city:'tj',  name:'Urvan TJ-1',   client:'Oxxo',        type:'urvan', km:94300},
+    {city:'tj',  name:'Urvan TJ-2',   client:'Bimbo',       type:'urvan', km:78500},
+    {city:'mex', name:'Urvan 2',      client:'Barcel',      type:'urvan', km:95400},
+    {city:'mex', name:'Urvan 7',      client:'Bimbo',       type:'urvan', km:88200},
+    {city:'mex', name:'Hiace 5',      client:'Barcel',      type:'urvan', km:74300},
+    {city:'mex', name:'Toreto 90',    client:'Oxxo',        type:'bus',   km:165000},
+    {city:'gdl', name:'Toreto 81',    client:'Barcel',      type:'bus',   km:167000},
+    {city:'gdl', name:'Urvan GDL-1',  client:'Bimbo',       type:'urvan', km:112000},
+    {city:'ver', name:'Urvan 20',     client:'Bimbo',       type:'urvan', km:112300},
+    {city:'ver', name:'Urvan 21',     client:'Dreams Jade', type:'urvan', km:98700},
+    {city:'ver', name:'Sprinter 84',  client:'Bimbo',       type:'urvan', km:134500},
+    {city:'ver', name:'Sprinter 85',  client:'Bimbo',       type:'urvan', km:121000},
+    {city:'hgo', name:'Toreto HGO-1', client:'Bimbo',       type:'bus',   km:143000},
+    {city:'hgo', name:'Urvan HGO-1',  client:'Barcel',      type:'urvan', km:67000},
+    {city:'can', name:'Urvan CAN-1',  client:'Dreams Jade', type:'urvan', km:55000},
+    {city:'can', name:'Urvan CAN-2',  client:'Oxxo',        type:'urvan', km:48000},
+    {city:'mer', name:'Toreto MER-1', client:'Bimbo',       type:'bus',   km:189000},
+    {city:'mer', name:'Urvan MER-1',  client:'Barcel',      type:'urvan', km:92000},
+    {city:'qro', name:'Toreto QRO-1', client:'Bachoco',     type:'bus',   km:134000},
+    {city:'qro', name:'Urvan QRO-1',  client:'Bimbo',       type:'urvan', km:81000},
+  ];
+  ST.buses = seed.map(b=>({...b, id:uid(), tires:{}}));
+  ST.logs = [];
+  saveLS();
+}
+
+// ─── SUPABASE DATA LAYER ─────────────────────────────────────────────────────
+async function loadFromSupabase(){
+  // Data already loaded in init(); this just filters the in-memory state by city
+  const city = ST.auth;
+  if(city && city !== 'admin'){
+    const {data:buses} = await sb.from('buses').select('*').eq('city', city);
+    const {data:logs}  = await sb.from('service_logs').select('*').eq('city', city).order('date',{ascending:false});
+    ST.buses = buses||[];
+    ST.logs  = logs||[];
+  }
+}
+
+async function dbSaveBus(bus){
+  if(!sb){ saveLS(); return; }
+  await sb.from('buses').upsert(bus);
+}
+async function dbSaveLog(log){
+  if(!sb){ saveLS(); return; }
+  await sb.from('service_logs').insert(log);
+}
+async function dbDeleteLog(id){
+  if(!sb){ ST.logs=ST.logs.filter(l=>l.id!==id); saveLS(); return; }
+  await sb.from('service_logs').delete().eq('id',id);
+}
+async function dbDeleteBus(id){
+  if(!sb){ ST.buses=ST.buses.filter(b=>b.id!==id); ST.logs=ST.logs.filter(l=>l.bus_id!==id); saveLS(); return; }
+  await sb.from('service_logs').delete().eq('bus_id',id);
+  await sb.from('buses').delete().eq('id',id);
+}
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function today(){ return new Date().toISOString().slice(0,10); }
+function fmt(n){ return Math.round(n).toLocaleString('es-MX'); }
+function mxn(n){ return '$'+Math.round(n).toLocaleString('es-MX'); }
+function cityBuses(){ return ST.buses.filter(b=>ST.auth==='admin'?true:b.city===ST.auth); }
+function busLogs(id){ return ST.logs.filter(l=>(l.bus_id||l.busId)===id).sort((a,b)=>b.date.localeCompare(a.date)||(b.ts||0)-(a.ts||0)); }
+function tireKM(tire,km){ return Math.max(0,km-(tire.kmAt||0)); }
+function condFill(c){ return c==='good'?'#639922':c==='mid'?'#EF9F27':c==='worn'?'#E24B4A':'#B4B2A9'; }
+function condPill(c){ return c==='good'?'pill-good':c==='mid'?'pill-mid':c==='worn'?'pill-worn':'pill-empty'; }
+function condLabel(c){ return c==='good'?'Buena':c==='mid'?'Desgaste medio':c==='worn'?'Desgaste alto':'Sin datos'; }
+
+function oilThresholds(bus){
+  return bus.type==='bus'
+    ? {warn:25000, alert:30000}
+    : {warn:7000,  alert:10000};
+}
+
+function getAlerts(bus){
+  const alerts=[], logs=busLogs(bus.id);
+  const lastOil=logs.find(l=>l.type==='oil');
+  const {warn,alert} = oilThresholds(bus);
+  if(!lastOil) alerts.push({msg:'Sin aceite registrado', level:'alert'});
+  else {
+    const km=bus.km-(lastOil.km_after||lastOil.kmAfter||0);
+    if(km>=alert)      alerts.push({msg:`Aceite vencido: ${fmt(km)} km`, level:'alert'});
+    else if(km>=warn)  alerts.push({msg:`Aceite próximo: ${fmt(km)} km`, level:'warn'});
+  }
+  Object.entries(bus.tires||{}).forEach(([pos,t])=>{ if(!t) return; const km=tireKM(t,bus.km); if(km>=70000) alerts.push({msg:`${POS_NAMES[pos]}: ${fmt(km)} km`, level:'alert'}); });
+  return alerts;
+}
+
+// ─── RENDER ──────────────────────────────────────────────────────────────────
+function render(){ document.getElementById('root').innerHTML = ST.auth ? renderApp() : renderLogin(); }
+
+function renderLogin(){
+  return `<div class="login-wrap"><div class="login-box">
+    <h1>Grupo ATE</h1>
+    <p class="sub">Control de flota · Selecciona tu ciudad e ingresa tu contraseña</p>
+    <div class="city-grid">${Object.entries(CITIES).map(([k,v])=>
+      `<button class="city-opt${ST.loginCity===k?' sel':''}" onclick="ST.loginCity='${k}';ST.loginErr='';render()">${v.name}</button>`).join('')}
+    </div>
+    ${ST.loginCity?`
+      <div class="form-row"><label>Contraseña</label>
+        <input type="password" id="pw" placeholder="••••••••" autofocus>
+      </div>
+      <div class="err">${ST.loginErr}</div>
+      <button class="btn primary full" onclick="doLogin()" style="margin-top:4px">Entrar</button>
+    `:''}
+  </div></div>`;
+}
+
+function doLogin(){
+  const pw=document.getElementById('pw')?.value||'';
+  if(pw===CITIES[ST.loginCity]?.pw){
+    ST.auth=ST.loginCity;
+    if(sb) loadFromSupabase().then(render);
+    else render();
+  } else { ST.loginErr='Contraseña incorrecta'; render(); }
+}
+
+function renderApp(){
+  const buses=cityBuses();
+  const bus=ST.busId?ST.buses.find(b=>b.id===ST.busId):null;
+  const isAdmin=ST.auth==='admin';
+
+  let h=`<div class="nav">
+    <span class="nav-brand">Grupo ATE — Flota</span>
+    ${isAdmin?`<select style="width:auto" onchange="ST.adminFilter=this.value;ST.busId=null;render()">
+      <option value="all">Todas las ciudades</option>
+      ${Object.entries(CITIES).filter(([k])=>k!=='admin').map(([k,v])=>`<option value="${k}">${v.name}</option>`).join('')}
+    </select>`:`<span class="city-badge">${CITIES[ST.auth]?.name}</span>`}
+    <button class="btn sm" onclick="ST.modal='bus';render()">+ Unidad</button>
+    <button class="btn sm ghost" onclick="ST.auth=null;ST.busId=null;render()">Salir</button>
+  </div>`;
+
+  const shown=isAdmin&&ST.adminFilter!=='all'?buses.filter(b=>b.city===ST.adminFilter):buses;
+
+  h+=`<div class="fleet-grid">`;
+  shown.forEach(b=>{
+    const al=getAlerts(b);
+    const dotColor = al.some(a=>a.level==='alert') ? 'var(--red)' : al.some(a=>a.level==='warn') ? '#EF9F27' : null;
+    h+=`<div class="bus-chip${ST.busId===b.id?' active':''}" onclick="selectBus('${b.id}')">
+      <div class="cn">${b.name}${dotColor?`<span style="width:7px;height:7px;border-radius:50%;background:${dotColor};flex-shrink:0;display:inline-block;margin-left:5px"></span>`:''}
+      </div><div class="cm">${b.client}${isAdmin?' · '+CITIES[b.city]?.name:''}<br>${fmt(b.km)} km</div>
+    </div>`;;
+  h+=`<div class="bus-chip chip-add" onclick="ST.modal='bus';render()">+ Nueva unidad</div></div>`;
+
+  if(!bus){
+    h+=`<div class="empty-state">Selecciona una unidad arriba para ver su historial</div>`;
+  } else {
+    const al=getAlerts(bus);
+    if(al.length){
+      const hasAlert = al.some(a=>a.level==='alert');
+      const barBg    = hasAlert ? 'var(--red-bg)' : 'var(--amber-bg)';
+      const barBdr   = hasAlert ? 'var(--red)'    : 'var(--amber)';
+      const barClr   = hasAlert ? 'var(--red-dark)': 'var(--amber-dark)';
+      const msgs     = al.map(a=>`<span style="color:${a.level==='alert'?'var(--red-dark)':'var(--amber-dark)'}">${a.msg}</span>`).join(' &nbsp;·&nbsp; ');
+      h+=`<div class="alert-bar" style="background:${barBg};border-color:${barBdr};color:${barClr}">⚠ ${msgs}</div>`;
+    }
+    h+=`<div class="tab-row">
+      <button class="tab${ST.tab==='log'?' active':''}" onclick="ST.tab='log';render()">Historial</button>
+      <button class="tab${ST.tab==='tires'?' active':''}" onclick="ST.tab='tires';render()">Llantas</button>
+      <button class="tab${ST.tab==='oil'?' active':''}" onclick="ST.tab='oil';render()">Aceite</button>
+      <button class="tab${ST.tab==='stats'?' active':''}" onclick="ST.tab='stats';render()">Resumen</button>
+    </div>`;
+    if(ST.tab==='log')   h+=renderLog(bus);
+    if(ST.tab==='tires') h+=renderTires(bus);
+    if(ST.tab==='oil')   h+=renderOil(bus);
+    if(ST.tab==='stats') h+=renderStats(bus);
+  }
+
+  if(ST.modal==='log'  && bus) h+=renderLogModal(bus);
+  if(ST.modal==='tire' && bus) h+=renderTireModal(bus);
+  if(ST.modal==='oil'  && bus) h+=renderOilModal(bus);
+  if(ST.modal==='bus')         h+=renderBusModal();
+  return h;
+}
+
+function renderLog(bus){
+  const logs=busLogs(bus.id);
+  const filtered=ST.logFilter==='all'?logs:logs.filter(l=>l.type===ST.logFilter);
+  const total=logs.reduce((s,l)=>s+(l.cost||0),0);
+  const lastOil=logs.find(l=>l.type==='oil');
+  const kmOil=lastOil?bus.km-(lastOil.km_after||lastOil.kmAfter||0):null;
+
+  let h=`<div class="two-col"><div>
+  <div class="kpi-row">
+    <div class="kpi"><div class="kl">Odómetro</div><div class="kv">${fmt(bus.km)}</div><div class="ks">km totales</div></div>
+    <div class="kpi"><div class="kl">Desde último aceite</div>
+      ${(()=>{ const {warn:w,alert:a}=oilThresholds(bus); const cls=kmOil===null?'':kmOil>=a?' alert':kmOil>=w?' warn':''; const lbl=kmOil===null?'':kmOil>=a?' ⚠ VENCIDO':kmOil>=w?' próximo a vencer':''; return `<div class="kv${cls}">${kmOil!==null?fmt(kmOil):'—'}</div><div class="ks">km${lbl}</div>`; })()}
+    </div>
+    <div class="kpi"><div class="kl">Gasto total</div><div class="kv">${mxn(total)}</div><div class="ks">registrado</div></div>
+  </div>
+  <div class="card"><div class="section-hdr">
+    <div class="filter-row">
+      ${['all','oil','repair','km'].map(f=>`<button class="filter-btn${ST.logFilter===f?' active':''}" onclick="ST.logFilter='${f}';render()">${f==='all'?'Todos':LOG_TYPES[f]||f}</button>`).join('')}
+    </div>
+    <button class="btn sm primary" onclick="ST.modal='log';render()">+ Nuevo</button>
+  </div>`;
+
+  if(!filtered.length){
+    h+=`<div class="empty-state">Sin registros${ST.logFilter!=='all'?' de este tipo':''}</div>`;
+  } else {
+    filtered.forEach(l=>{
+      const km=l.km_after||l.kmAfter;
+      h+=`<div class="log-item">
+        <div class="dot d-${l.type}"></div>
+        <div><div class="li-title">${l.description||l.desc||LOG_TYPES[l.type]}</div>
+          <div class="li-meta">${l.date}${km?' &nbsp;·&nbsp; '+fmt(km)+' km':''}${l.technician||l.tech?' &nbsp;·&nbsp; '+(l.technician||l.tech):''}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
+          <span class="li-cost${l.cost?'':' zero'}">${l.cost?mxn(l.cost):'—'}</span>
+          <button class="btn sm ghost" onclick="doDelLog('${l.id}')">✕</button>
+        </div>
+      </div>`;
+    });
+  }
+  h+=`</div></div>`;
+
+  h+=`<div><div class="card"><div class="section-hdr"><h4>${bus.name}</h4>
+      <button class="btn sm ghost danger" onclick="doDelBus('${bus.id}')">Eliminar</button>
+    </div>
+    <div class="stat-row"><span class="stat-lbl">Cliente</span><span>${bus.client}</span></div>
+    <div class="stat-row"><span class="stat-lbl">Ciudad</span><span>${CITIES[bus.city]?.name||bus.city}</span></div>
+    <div class="stat-row"><span class="stat-lbl">Tipo</span><span>${bus.type==='bus'?'Autobús':'Urvan / Sprinter'}</span></div>
+    <div class="stat-row"><span class="stat-lbl">Registros</span><span>${logs.length}</span></div>
+    <div style="margin-top:0.75rem"><button class="btn sm" onclick="ST.tab='tires';render()">Ver llantas →</button></div>
+  </div>
+  ${lastOil?`<div class="card">
+    <h4 style="margin-bottom:0.75rem">Último aceite</h4>
+    <div class="stat-row"><span class="stat-lbl">Fecha</span><span>${lastOil.date}</span></div>
+    <div class="stat-row"><span class="stat-lbl">KM al cambio</span><span>${fmt(lastOil.km_after||lastOil.kmAfter||0)}</span></div>
+    <div class="stat-row"><span class="stat-lbl">Próximo (est.)</span>
+      <span style="color:${kmOil>=5000?'var(--red-dark)':'var(--text)'}">${fmt((lastOil.km_after||lastOil.kmAfter||0)+5000)} km</span></div>
+    ${lastOil.description||lastOil.desc?`<div class="stat-row"><span class="stat-lbl">Detalle</span>
+      <span style="font-size:12px;text-align:right;max-width:58%">${lastOil.description||lastOil.desc}</span></div>`:''}
+  </div>`:''}
+  </div></div>`;
+  return h;
+}
+
+function renderTires(bus){
+  const tires=bus.tires||{};
+  const positions=bus.type==='bus'?POS_CFG:POS_CFG.filter(p=>URVAN_POS.has(p.id));
+  const sel=ST.selTire, tire=sel?tires[sel]:null;
+
+  let h=`<div class="two-col"><div class="card"><div class="section-hdr">
+    <h4>Posición de llantas — ${bus.name}</h4>
+    <button class="btn sm primary" onclick="ST.modal='tire';ST.tirePrePos=null;render()">+ Evento</button>
+  </div>`;
+
+  h+=`<div class="tire-wrap"><svg viewBox="0 0 240 305" style="width:100%;display:block">
+    <rect x="33" y="25" width="174" height="232" rx="10" fill="var(--bg2)" stroke="var(--border)" stroke-width="0.5"/>
+    <rect x="51" y="36" width="138" height="46" rx="4" fill="var(--bg)" stroke="var(--border)" stroke-width="0.5"/>
+    <rect x="51" y="185" width="138" height="38" rx="4" fill="var(--bg)" stroke="var(--border)" stroke-width="0.5"/>
+    <text x="120" y="17" text-anchor="middle" font-size="8" fill="var(--text3)" font-family="-apple-system,sans-serif">FRENTE</text>
+    <text x="120" y="300" text-anchor="middle" font-size="8" fill="var(--text3)" font-family="-apple-system,sans-serif">TRASERA</text>`;
+
+  positions.forEach(p=>{
+    const t=tires[p.id], km=t?tireKM(t,bus.km):0;
+    const fill=condFill(t?.cond), isSel=sel===p.id;
+    const lines=p.lbl.split('\n'), cx=p.x+p.w/2, cy=p.y+p.h/2;
+    h+=`<g class="tp-btn" onclick="ST.selTire='${p.id}';render()">
+      <rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="3" fill="${fill}" stroke="${isSel?'#378ADD':'transparent'}" stroke-width="${isSel?2.5:0}"/>`;
+    if(p.spare){
+      h+=`<text x="${cx}" y="${cy-4}" text-anchor="middle" font-size="7" fill="white" font-family="-apple-system,sans-serif" font-weight="600">REF</text>
+          <text x="${cx}" y="${cy+6}" text-anchor="middle" font-size="6.5" fill="rgba(255,255,255,0.85)" font-family="-apple-system,sans-serif">${t?fmt(km)+'k':'—'}</text>`;
+    } else {
+      lines.forEach((ln,i)=>{ h+=`<text x="${cx}" y="${cy-(lines.length-1)*4.5+i*9-3}" text-anchor="middle" font-size="7" fill="white" font-family="-apple-system,sans-serif" font-weight="600">${ln}</text>`; });
+      h+=`<text x="${cx}" y="${p.y+p.h-4}" text-anchor="middle" font-size="6.5" fill="rgba(255,255,255,0.85)" font-family="-apple-system,sans-serif">${t?fmt(km)+'k':'—'}</text>`;
+    }
+    h+=`</g>`;
+  });
+  h+=`</svg></div>`;
+  h+=`<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;font-size:11px;color:var(--text2);margin-top:0.5rem">
+    ${[['#639922','Buena'],['#EF9F27','Medio'],['#E24B4A','Alto desgaste'],['#B4B2A9','Sin datos']].map(([c,l])=>
+      `<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:${c};flex-shrink:0;display:inline-block"></span>${l}</span>`).join('')}
+  </div></div>`;
+
+  h+=`<div>`;
+  if(!sel){
+    h+=`<div class="card" style="min-height:200px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:var(--text3)">
+      <span style="font-size:24px;opacity:0.3">→</span><span style="font-size:13px">Toca una llanta para ver detalles</span></div>`;
+  } else {
+    h+=`<div class="card"><h4 style="margin-bottom:0.5rem">${POS_NAMES[sel]}</h4>`;
+    if(!tire){
+      h+=`<p style="font-size:13px;color:var(--text3);margin:1rem 0;line-height:1.6">Sin llanta registrada en esta posición.</p>
+        <button class="btn primary full" onclick="openTireAt('${sel}')">Instalar llanta aquí</button>`;
+    } else {
+      const km=tireKM(tire,bus.km);
+      h+=`<span class="pill ${condPill(tire.cond)}" style="display:inline-block;margin:0.5rem 0 0.75rem">${condLabel(tire.cond)}</span>`;
+      h+=`<div class="stat-row"><span class="stat-lbl">Marca / Medida</span><span>${tire.brand||'—'}</span></div>`;
+      h+=`<div class="stat-row"><span class="stat-lbl">Instalada</span><span>${tire.installDate||tire.install_date||'—'}</span></div>`;
+      h+=`<div class="stat-row"><span class="stat-lbl">KM al instalar</span><span>${fmt(tire.kmAt||tire.km_at||0)}</span></div>`;
+      h+=`<div class="stat-row"><span class="stat-lbl">KM recorridos</span>
+        <span style="font-weight:600;color:${km>=70000?'var(--red-dark)':km>=50000?'var(--amber-dark)':'var(--green-dark)'}">${fmt(km)}</span></div>`;
+      if(tire.history?.length){
+        h+=`<div style="margin-top:0.75rem;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px">Historial</div>`;
+        tire.history.slice(0,5).forEach(e=>{
+          h+=`<div class="hist-entry"><b>${e.date}</b> · ${e.event}${e.brand?' · '+e.brand:''} · ${fmt(e.kmAt||e.km_at||0)} km${e.notes?' · '+e.notes:''}</div>`;
+        });
+      }
+      h+=`<div style="display:flex;flex-direction:column;gap:7px;margin-top:1rem">
+        <button class="btn" onclick="openTireAction('${sel}','rotate')">Rotar posición</button>
+        <button class="btn" onclick="openTireAction('${sel}','new')">Reemplazar llanta</button>
+        <button class="btn danger" onclick="openTireAction('${sel}','retire')">Dar de baja</button>
+      </div>`;
+    }
+    h+=`</div>`;
+  }
+  h+=`</div></div>`;
+  return h;
+}
+
+
+function renderOil(bus){
+  const logs = busLogs(bus.id).filter(l=>l.type==='oil');
+  const lastOil = logs[0]||null;
+  const kmSince = lastOil ? bus.km-(lastOil.km_after||0) : null;
+  const nextKm  = lastOil ? (lastOil.km_after||0)+5000 : null;
+
+  let h=`<div class="two-col"><div>`;
+
+  h+=`<div class="kpi-row">
+    <div class="kpi"><div class="kl">Último cambio</div><div class="kv" style="font-size:15px">${lastOil?lastOil.date:'—'}</div><div class="ks">${lastOil?fmt(lastOil.km_after||0)+' km':'sin registro'}</div></div>
+    <div class="kpi"><div class="kl">KM desde último</div>
+      ${(()=>{ const {warn:w,alert:a}=oilThresholds(bus); const cls=kmSince===null?'':kmSince>=a?' alert':kmSince>=w?' warn':''; const lbl=kmSince===null?'':kmSince>=a?'⚠ VENCIDO':kmSince>=w?'próximo a vencer':'al día'; return `<div class="kv${cls}">${kmSince!==null?fmt(kmSince):'—'}</div><div class="ks">${lbl}</div>`; })()}
+    </div>
+    <div class="kpi"><div class="kl">Próximo cambio</div><div class="kv" style="font-size:15px">${nextKm?fmt(nextKm):'—'}</div><div class="ks">km estimado</div></div>
+  </div>`;
+
+  h+=`<div class="card"><div class="section-hdr"><h4>Historial de servicios</h4>
+    <button class="btn sm primary" onclick="ST.modal='oil';render()">+ Nuevo servicio</button>
+  </div>`;
+
+  if(!logs.length){
+    h+=`<div class="empty-state">Sin servicios registrados para esta unidad</div>`;
+  } else {
+    logs.forEach(l=>{
+      const items = l.oil_items||{};
+      const changed = OIL_ITEMS.filter(i=>items[i.id]==='si').map(i=>i.label);
+      const notChanged = OIL_ITEMS.filter(i=>items[i.id]==='no').map(i=>i.label);
+      h+=`<div class="log-item">
+        <div class="dot d-oil"></div>
+        <div style="flex:1">
+          <div class="li-title">${l.description||'Servicio de aceite'}${l.oil_type?' · '+l.oil_type:''}</div>
+          <div class="li-meta">${l.date} &nbsp;·&nbsp; ${fmt(l.km_after||0)} km${l.technician?' &nbsp;·&nbsp; '+l.technician:''}</div>
+          ${changed.length?`<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px">
+            ${changed.map(c=>`<span style="font-size:11px;padding:2px 7px;border-radius:99px;background:var(--green-bg);color:var(--green-dark);font-weight:500">✓ ${c}</span>`).join('')}
+            ${notChanged.map(c=>`<span style="font-size:11px;padding:2px 7px;border-radius:99px;background:var(--bg2);color:var(--text3)">${c}</span>`).join('')}
+          </div>`:''}
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
+          <span class="li-cost${l.cost?'':' zero'}">${l.cost?mxn(l.cost):'—'}</span>
+          <button class="btn sm ghost" onclick="doDelLog('${l.id}')">✕</button>
+        </div>
+      </div>`;
+    });
+  }
+  h+=`</div></div>`;
+
+  // right panel — last service summary
+  h+=`<div>`;
+  if(lastOil && lastOil.oil_items){
+    h+=`<div class="card"><h4 style="margin-bottom:0.75rem">Último servicio — detalle</h4>`;
+    h+=`<div class="stat-row"><span class="stat-lbl">Fecha</span><span>${lastOil.date}</span></div>`;
+    h+=`<div class="stat-row"><span class="stat-lbl">KM</span><span>${fmt(lastOil.km_after||0)}</span></div>`;
+    if(lastOil.oil_type) h+=`<div class="stat-row"><span class="stat-lbl">Tipo de aceite</span><span>${lastOil.oil_type}</span></div>`;
+    if(lastOil.technician) h+=`<div class="stat-row"><span class="stat-lbl">Técnico</span><span>${lastOil.technician}</span></div>`;
+    if(lastOil.cost) h+=`<div class="stat-row"><span class="stat-lbl">Costo</span><span>${mxn(lastOil.cost)}</span></div>`;
+    h+=`<div style="margin-top:0.75rem;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px">Checklist</div>`;
+    OIL_ITEMS.forEach(item=>{
+      const val = lastOil.oil_items[item.id];
+      if(!val||val==='na') return;
+      const ok = val==='si';
+      h+=`<div class="stat-row">
+        <span class="stat-lbl">${item.label}</span>
+        <span class="pill ${ok?'pill-good':'pill-worn'}" style="font-size:10px">${ok?'Cambiado':'No cambiado'}</span>
+      </div>`;
+    });
+    h+=`</div>`;
+  } else {
+    h+=`<div class="card" style="min-height:160px;display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:13px">Sin servicios aún</div>`;
+  }
+  h+=`</div></div>`;
+  return h;
+}
+
+function renderOilModal(bus){
+  const itemsHtml = OIL_ITEMS.map(item=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:0.5px solid var(--border)">
+      <span style="font-size:13px;font-weight:500">${item.label}</span>
+      <div style="display:flex;gap:6px">
+        <button id="oi-${item.id}-si"  class="btn sm oil-opt" onclick="setOilItem('${item.id}','si')" >Sí</button>
+        <button id="oi-${item.id}-no"  class="btn sm oil-opt" onclick="setOilItem('${item.id}','no')" >No</button>
+        <button id="oi-${item.id}-na"  class="btn sm oil-opt active-na" onclick="setOilItem('${item.id}','na')">N/A</button>
+      </div>
+    </div>`).join('');
+
+  return `<div class="modal-wrap"><div class="modal" style="max-width:500px">
+    <h3>Servicio de aceite — ${bus.name}</h3>
+    <div class="fg2" style="margin-bottom:4px">
+      <div class="form-row"><label>Fecha</label><input type="date" id="om-date" value="${today()}"></div>
+      <div class="form-row"><label>KM actuales (odómetro)</label><input type="number" id="om-km" value="${bus.km}"></div>
+    </div>
+    <div class="fg2" style="margin-bottom:12px">
+      <div class="form-row"><label>Tipo de aceite</label>
+        <select id="om-oiltype">${OIL_TYPES.map(t=>`<option>${t}</option>`).join('')}</select>
+      </div>
+      <div class="form-row"><label>Costo total ($)</label><input type="number" id="om-cost" value="0" min="0"></div>
+    </div>
+    <div style="font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px">¿Qué se hizo?</div>
+    <div id="oil-checklist" style="margin-bottom:12px">${itemsHtml}</div>
+    <div class="fg2">
+      <div class="form-row"><label>Técnico / Taller</label><input type="text" id="om-tech" placeholder="Nombre o taller"></div>
+      <div class="form-row"><label>Notas</label><input type="text" id="om-notes" placeholder="Opcional"></div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn" onclick="ST.modal=null;render()">Cancelar</button>
+      <button class="btn primary" onclick="doSaveOil('${bus.id}')">Guardar servicio</button>
+    </div>
+  </div></div>
+  <style>
+    .oil-opt{color:var(--text2);min-width:38px;text-align:center}
+    .oil-opt.active-si{background:var(--green-bg);color:var(--green-dark);border-color:var(--green)}
+    .oil-opt.active-no{background:var(--red-bg);color:var(--red-dark);border-color:var(--red)}
+    .oil-opt.active-na{background:var(--bg2);color:var(--text3);border-color:var(--border)}
+  </style>`;
+}
+
+function renderStats(bus){
+  const logs=busLogs(bus.id);
+  const byType={};
+  logs.forEach(l=>{ byType[l.type]=(byType[l.type]||0)+(l.cost||0); });
+  const total=Object.values(byType).reduce((a,b)=>a+b,0);
+  const oilLogs=logs.filter(l=>l.type==='oil');
+  let intervals=[];
+  for(let i=0;i<oilLogs.length-1;i++){
+    const d=(oilLogs[i].km_after||oilLogs[i].kmAfter||0)-(oilLogs[i+1].km_after||oilLogs[i+1].kmAfter||0);
+    if(d>0) intervals.push(d);
+  }
+  const avgOil=intervals.length?Math.round(intervals.reduce((a,b)=>a+b,0)/intervals.length):null;
+  const catColors={oil:'#639922',repair:'#E24B4A',km:'#378ADD'};
+  const catNames={oil:'Aceite / Preventivo',repair:'Correctivos',km:'Solo KM'};
+
+  let h=`<div class="two-col"><div>
+  <div class="card"><h4 style="margin-bottom:1rem">Gasto por categoría</h4>
+    ${Object.entries(catNames).map(([k,label])=>{
+      const val=byType[k]||0, pct=total>0?Math.round(val/total*100):0;
+      return `<div class="bar-wrap"><div class="bar-lbl"><span>${label}</span><span style="font-weight:600">${mxn(val)}</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${catColors[k]}"></div></div></div>`;
+    }).join('')}
+    <div style="margin-top:1rem;padding-top:0.75rem;border-top:0.5px solid var(--border);display:flex;justify-content:space-between;font-weight:600;font-size:13px">
+      <span>Total</span><span>${mxn(total)}</span>
+    </div></div>
+  ${oilLogs.length?`<div class="card">
+    <h4 style="margin-bottom:0.75rem">Patrón de aceite</h4>
+    <div class="stat-row"><span class="stat-lbl">Cambios registrados</span><span>${oilLogs.length}</span></div>
+    ${avgOil?`<div class="stat-row"><span class="stat-lbl">Promedio entre cambios</span><span>${fmt(avgOil)} km</span></div>`:''}
+    <div class="stat-row"><span class="stat-lbl">Último cambio</span><span>${oilLogs[0].date}</span></div>
+    <div class="stat-row"><span class="stat-lbl">Próximo estimado</span>
+      <span>${fmt((oilLogs[0].km_after||oilLogs[0].kmAfter||0)+5000)} km</span></div>
+  </div>`:''}
+  </div><div><div class="card">
+    <h4 style="margin-bottom:0.75rem">Estado de llantas</h4>
+    ${POS_CFG.map(p=>{
+      if(bus.type!=='bus'&&!URVAN_POS.has(p.id)) return '';
+      const t=(bus.tires||{})[p.id], km=t?tireKM(t,bus.km):null;
+      return `<div class="stat-row"><span class="stat-lbl">${POS_NAMES[p.id]}</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          ${km!==null?`<span style="font-size:12px">${fmt(km)} km</span>`:''}
+          <span class="pill ${t?condPill(t.cond):'pill-empty'}" style="font-size:10px">${t?condLabel(t.cond):'Vacía'}</span>
+        </div></div>`;
+    }).join('')}
+  </div></div></div>`;
+  return h;
+}
+
+function renderLogModal(bus){
+  return `<div class="modal-wrap"><div class="modal">
+    <h3>Nuevo registro — ${bus.name}</h3>
+    <div class="form-row"><label>Tipo de servicio</label>
+      <select id="lm-type">${Object.entries(LOG_TYPES).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select>
+    </div>
+    <div class="fg2">
+      <div class="form-row"><label>Fecha</label><input type="date" id="lm-date" value="${today()}"></div>
+      <div class="form-row"><label>KM actuales (odómetro)</label><input type="number" id="lm-km" value="${bus.km}"></div>
+    </div>
+    <div class="form-row"><label>Descripción del servicio</label>
+      <textarea id="lm-desc" rows="2" placeholder="Ej: Aceite 5W-30, filtro aire, filtro aceite, bujías…"></textarea>
+    </div>
+    <div class="fg2">
+      <div class="form-row"><label>Costo ($)</label><input type="number" id="lm-cost" value="0" min="0"></div>
+      <div class="form-row"><label>Técnico / Taller</label><input type="text" id="lm-tech" placeholder="Nombre o taller"></div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn" onclick="ST.modal=null;render()">Cancelar</button>
+      <button class="btn primary" onclick="doSaveLog('${bus.id}')">Guardar</button>
+    </div>
+  </div></div>`;
+}
+
+function renderTireModal(bus){
+  const positions=bus.type==='bus'?POS_CFG:POS_CFG.filter(p=>URVAN_POS.has(p.id));
+  const prePos=ST.tirePrePos||positions[0]?.id;
+  return `<div class="modal-wrap"><div class="modal">
+    <h3>Evento de llanta — ${bus.name}</h3>
+    <div class="fg2">
+      <div class="form-row"><label>Posición</label>
+        <select id="tm-pos">${positions.map(p=>`<option value="${p.id}"${p.id===prePos?' selected':''}>${POS_NAMES[p.id]}</option>`).join('')}</select>
+      </div>
+      <div class="form-row"><label>Evento</label>
+        <select id="tm-event">${Object.entries(TIRE_EVENTS).map(([k,v])=>`<option value="${k}"${k===ST.tirePreEvent?' selected':''}>${v}</option>`).join('')}</select>
+      </div>
+    </div>
+    <div class="fg2">
+      <div class="form-row"><label>Fecha</label><input type="date" id="tm-date" value="${today()}"></div>
+      <div class="form-row"><label>KM actuales</label><input type="number" id="tm-km" value="${bus.km}"></div>
+    </div>
+    <div class="fg2">
+      <div class="form-row"><label>Marca / Medida</label><input type="text" id="tm-brand" placeholder="Ej: Hankook 11R22.5"></div>
+      <div class="form-row"><label>Condición</label>
+        <select id="tm-cond"><option value="good">Buena</option><option value="mid">Desgaste medio</option><option value="worn">Desgaste alto</option></select>
+      </div>
+    </div>
+    <div class="fg2">
+      <div class="form-row"><label>Costo ($, si es nueva)</label><input type="number" id="tm-cost" value="0"></div>
+      <div class="form-row"><label>Notas</label><input type="text" id="tm-notes" placeholder="Opcional"></div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn" onclick="ST.modal=null;ST.tirePrePos=null;ST.tirePreEvent=null;render()">Cancelar</button>
+      <button class="btn primary" onclick="doSaveTire('${bus.id}')">Guardar</button>
+    </div>
+  </div></div>`;
+}
+
+function renderBusModal(){
+  return `<div class="modal-wrap"><div class="modal">
+    <h3>Nueva unidad</h3>
+    <div class="fg2">
+      <div class="form-row"><label>Nombre / Número</label><input type="text" id="bm-name" placeholder="Ej: Toreto 200" autofocus></div>
+      <div class="form-row"><label>Tipo</label>
+        <select id="bm-type"><option value="bus">Autobús</option><option value="urvan">Urvan / Sprinter</option></select>
+      </div>
+    </div>
+    <div class="fg2">
+      <div class="form-row"><label>Cliente</label>
+        <select id="bm-client">${CLIENTS.map(c=>`<option>${c}</option>`).join('')}</select>
+      </div>
+      <div class="form-row"><label>Ciudad</label>
+        <select id="bm-city">${Object.entries(CITIES).filter(([k])=>k!=='admin').map(([k,v])=>
+          `<option value="${k}"${k===ST.auth&&ST.auth!=='admin'?' selected':''}>${v.name}</option>`).join('')}</select>
+      </div>
+    </div>
+    <div class="form-row"><label>KM iniciales (odómetro)</label><input type="number" id="bm-km" value="0"></div>
+    <div class="modal-btns">
+      <button class="btn" onclick="ST.modal=null;render()">Cancelar</button>
+      <button class="btn primary" onclick="doSaveBus()">Agregar unidad</button>
+    </div>
+  </div></div>`;
+}
+
+// ─── ACTIONS ─────────────────────────────────────────────────────────────────
+function selectBus(id){ ST.busId=id; ST.selTire=null; ST.tab='log'; render(); }
+function openTireAt(pos){ ST.tirePrePos=pos; ST.tirePreEvent='new'; ST.modal='tire'; render(); }
+function openTireAction(pos,event){ ST.tirePrePos=pos; ST.tirePreEvent=event; ST.modal='tire'; render(); }
+
+let _oilItems = {};
+function setOilItem(id,val){
+  _oilItems[id]=val;
+  ['si','no','na'].forEach(v=>{
+    const btn=document.getElementById('oi-'+id+'-'+v);
+    if(btn){ btn.className='btn sm oil-opt'+(v===val?' active-'+v:''); }
+  });
+}
+
+async function doSaveOil(busId){
+  const bus=ST.buses.find(b=>b.id===busId);
+  if(!bus) return;
+  const date      = document.getElementById('om-date').value;
+  const kmRaw     = parseInt(document.getElementById('om-km').value)||0;
+  const oilType   = document.getElementById('om-oiltype').value;
+  const cost      = parseFloat(document.getElementById('om-cost').value)||0;
+  const tech      = document.getElementById('om-tech').value.trim();
+  const notes     = document.getElementById('om-notes').value.trim();
+  const kmAfter   = Math.max(kmRaw, bus.km);
+  bus.km = kmAfter;
+  // fill any untouched items as 'na'
+  const items = {};
+  OIL_ITEMS.forEach(i=>{ items[i.id] = _oilItems[i.id]||'na'; });
+  const changed = OIL_ITEMS.filter(i=>items[i.id]==='si').map(i=>i.label).join(', ');
+  const desc = `Aceite ${oilType}${changed?' · '+changed:''}${notes?' · '+notes:''}`;
+  const log = {
+    id:uid(), bus_id:busId, city:bus.city, type:'oil',
+    date, description:desc, cost, technician:tech,
+    km_after:kmAfter, oil_type:oilType, oil_items:items, ts:Date.now()
+  };
+  ST.logs.unshift(log);
+  _oilItems = {};
+  await dbSaveBus(bus);
+  await dbSaveOil(log);
+  ST.modal=null; ST.tab='oil'; render();
+}
+
+async function dbSaveOil(log){
+  if(!sb){ saveLS(); return; }
+  await sb.from('service_logs').insert(log);
+}
+
+async function doSaveLog(busId){
+  const bus=ST.buses.find(b=>b.id===busId);
+  if(!bus) return;
+  const type=document.getElementById('lm-type').value;
+  const date=document.getElementById('lm-date').value;
+  const kmRaw=parseInt(document.getElementById('lm-km').value)||0;
+  const desc=document.getElementById('lm-desc').value.trim();
+  const cost=parseFloat(document.getElementById('lm-cost').value)||0;
+  const tech=document.getElementById('lm-tech').value.trim();
+  const kmAfter=Math.max(kmRaw, bus.km);
+  bus.km=kmAfter;
+  const log={id:uid(), bus_id:busId, city:bus.city, type, date, description:desc, cost, technician:tech, km_after:kmAfter, ts:Date.now()};
+  ST.logs.unshift(log);
+  await dbSaveBus(bus);
+  await dbSaveLog(log);
+  ST.modal=null; render();
+}
+
+async function doSaveTire(busId){
+  const bus=ST.buses.find(b=>b.id===busId);
+  if(!bus) return;
+  const pos=document.getElementById('tm-pos').value;
+  const event=document.getElementById('tm-event').value;
+  const date=document.getElementById('tm-date').value;
+  const kmRaw=parseInt(document.getElementById('tm-km').value)||0;
+  const brand=document.getElementById('tm-brand').value.trim();
+  const cond=document.getElementById('tm-cond').value;
+  const cost=parseFloat(document.getElementById('tm-cost').value)||0;
+  const notes=document.getElementById('tm-notes').value.trim();
+  const kmAfter=Math.max(kmRaw,bus.km);
+  bus.km=kmAfter;
+  if(!bus.tires) bus.tires={};
+  const histEntry={date,event:TIRE_EVENTS[event],brand,kmAt:kmAfter,notes};
+  const prev=bus.tires[pos];
+  if(event==='retire'){
+    if(prev){ if(!prev.history)prev.history=[]; prev.history.unshift(histEntry); prev.cond='worn'; }
+  } else {
+    bus.tires[pos]={brand:brand||(prev?.brand||''),installDate:date,kmAt:kmAfter,cond,history:[histEntry,...(prev?.history||[])]};
+  }
+  if(cost>0){ const log={id:uid(),bus_id:busId,city:bus.city,type:'tire',date,description:`${TIRE_EVENTS[event]} · ${POS_NAMES[pos]}${brand?' · '+brand:''}`,cost,km_after:kmAfter,ts:Date.now()}; ST.logs.unshift(log); await dbSaveLog(log); }
+  await dbSaveBus(bus);
+  ST.modal=null; ST.tirePrePos=null; ST.tirePreEvent=null; ST.selTire=pos; ST.tab='tires'; render();
+}
+
+async function doSaveBus(){
+  const name=document.getElementById('bm-name').value.trim();
+  const type=document.getElementById('bm-type').value;
+  const client=document.getElementById('bm-client').value;
+  const city=document.getElementById('bm-city').value;
+  const km=parseInt(document.getElementById('bm-km').value)||0;
+  if(!name) return;
+  const bus={id:uid(),name,type,client,city,km,tires:{}};
+  ST.buses.push(bus);
+  await dbSaveBus(bus);
+  ST.modal=null; ST.busId=bus.id; render();
+}
+
+async function doDelLog(id){
+  ST.logs=ST.logs.filter(l=>l.id!==id);
+  await dbDeleteLog(id);
+  render();
+}
+
+async function doDelBus(id){
+  const bus=ST.buses.find(b=>b.id===id);
+  if(!confirm(`¿Eliminar ${bus?.name}? Se borra todo su historial.`)) return;
+  ST.buses=ST.buses.filter(b=>b.id!==id);
+  ST.logs=ST.logs.filter(l=>(l.bus_id||l.busId)!==id);
+  await dbDeleteBus(id);
+  ST.busId=null; render();
+}
+
+// keyboard shortcut: Enter on password field
+document.addEventListener('keydown', e=>{ if(e.key==='Enter'&&!ST.auth){ doLogin(); } });
+
+init();
+</script>
+</body>
+</html>
