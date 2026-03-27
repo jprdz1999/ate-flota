@@ -118,7 +118,9 @@ label{font-size:12px;color:var(--text2);display:block;margin-bottom:4px}
 .filter-btn.active{background:var(--bg2);color:var(--text);border-color:var(--border2)}
 .loading-screen{display:flex;align-items:center;justify-content:center;min-height:200px;color:var(--text2);font-size:13px;gap:8px}
 .toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:var(--green);color:#fff;padding:10px 22px;border-radius:var(--radius);font-size:13px;font-weight:500;z-index:999;pointer-events:none;box-shadow:0 2px 12px rgba(0,0,0,0.18);animation:toastIn 0.2s ease}
+.toast.error{background:var(--red)}
 @keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+.modal-err{font-size:12px;color:var(--red-dark);background:var(--red-bg);border:0.5px solid rgba(226,75,74,0.3);border-radius:var(--radius);padding:8px 11px;margin-bottom:10px}
 </style>
 </head>
 <body>
@@ -163,7 +165,7 @@ let ST = {
   auth:null, busId:null, tab:'log', selTire:null,
   modal:null, logFilter:'all', tirePrePos:null, tirePreEvent:null,
   loginCity:null, loginErr:'', saving:false,
-  adminFilter:'all', buses:[], logs:[], toast:null
+  adminFilter:'all', buses:[], logs:[], toast:null, toastType:null, modalErr:''
 };
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
@@ -173,7 +175,7 @@ async function init(){
     const { data:{ session } } = await sb.auth.getSession();
     if(session){
       const city = session.user?.user_metadata?.city;
-      if(city){ ST.auth = city; await loadFromSupabase(); }
+      if(city){ ST.auth = city; const {error}=await loadFromSupabase(); if(error) console.error('Error cargando datos:', error); }
     }
   } catch(e){ console.error('Supabase unreachable:', e); }
   render();
@@ -182,29 +184,34 @@ async function init(){
 
 // ─── SUPABASE DATA LAYER ─────────────────────────────────────────────────────
 async function loadFromSupabase(){
-  // RLS policies on the server enforce city scoping — no client-side filtering needed
-  const {data:buses} = await sb.from('buses').select('*');
-  const {data:logs}  = await sb.from('service_logs').select('*').order('date',{ascending:false});
-  ST.buses = buses||[];
-  ST.logs  = logs||[];
+  const {data:buses,error:e1}=await sb.from('buses').select('*');
+  const {data:logs,error:e2}=await sb.from('service_logs').select('*').order('date',{ascending:false});
+  if(e1||e2) return {error:(e1||e2).message};
+  ST.buses=buses||[];
+  ST.logs=logs||[];
+  return {error:null};
 }
 
 async function dbSaveBus(bus){
-  if(!sb) return;
-  await sb.from('buses').upsert(bus);
+  if(!sb) return {error:'Sin conexión'};
+  const {error}=await sb.from('buses').upsert(bus);
+  return {error};
 }
 async function dbSaveLog(log){
-  if(!sb) return;
-  await sb.from('service_logs').insert(log);
+  if(!sb) return {error:'Sin conexión'};
+  const {error}=await sb.from('service_logs').insert(log);
+  return {error};
 }
 async function dbDeleteLog(id){
-  if(!sb) return;
-  await sb.from('service_logs').delete().eq('id',id);
+  if(!sb) return {error:'Sin conexión'};
+  const {error}=await sb.from('service_logs').delete().eq('id',id);
+  return {error};
 }
 async function dbDeleteBus(id){
-  if(!sb) return;
-  await sb.from('service_logs').delete().eq('bus_id',id);
-  await sb.from('buses').delete().eq('id',id);
+  if(!sb) return {error:'Sin conexión'};
+  const {error:e1}=await sb.from('service_logs').delete().eq('bus_id',id);
+  const {error:e2}=await sb.from('buses').delete().eq('id',id);
+  return {error:e1||e2};
 }
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
@@ -232,9 +239,9 @@ function getAlerts(bus){
 function render(){
   document.getElementById('root').innerHTML = ST.auth ? renderApp() : renderLogin();
   document.querySelectorAll('.toast').forEach(t=>t.remove());
-  if(ST.toast){ const t=document.createElement('div'); t.className='toast'; t.textContent=ST.toast; document.body.appendChild(t); }
+  if(ST.toast){ const t=document.createElement('div'); t.className='toast'+(ST.toastType==='error'?' error':''); t.textContent=ST.toast; document.body.appendChild(t); }
 }
-function showToast(msg){ ST.toast=msg; render(); setTimeout(()=>{ ST.toast=null; document.querySelectorAll('.toast').forEach(e=>e.remove()); },2500); }
+function showToast(msg,type='success'){ ST.toast=msg; ST.toastType=type; render(); setTimeout(()=>{ ST.toast=null; ST.toastType=null; document.querySelectorAll('.toast').forEach(e=>e.remove()); },2500); }
 
 function renderLogin(){
   return `<div class="login-wrap"><div class="login-box">
@@ -265,7 +272,8 @@ async function doLogin(){
   const city=data.user?.user_metadata?.city;
   if(!city){ ST.loginErr='Usuario sin ciudad asignada. Contacta al administrador.'; ST.saving=false; render(); return; }
   ST.auth=city; ST.saving=false;
-  await loadFromSupabase();
+  const {error:loadErr}=await loadFromSupabase();
+  if(loadErr){ ST.loginErr='Error al cargar datos. Intenta de nuevo.'; ST.auth=null; ST.saving=false; render(); return; }
   render();
 }
 
@@ -524,9 +532,12 @@ function renderLogModal(bus){
       <div class="form-row"><label>Costo ($)</label><input type="number" id="lm-cost" value="0" min="0"></div>
       <div class="form-row"><label>Técnico / Taller</label><input type="text" id="lm-tech" placeholder="Nombre o taller"></div>
     </div>
+    ${ST.modalErr?`<div class="modal-err">${ST.modalErr}</div>`:''}
     <div class="modal-btns">
-      <button class="btn" onclick="ST.modal=null;render()">Cancelar</button>
-      <button class="btn primary" onclick="doSaveLog('${bus.id}')">Guardar</button>
+      <button class="btn" onclick="ST.modal=null;ST.modalErr='';render()">Cancelar</button>
+      <button class="btn primary" onclick="doSaveLog('${bus.id}')" ${ST.saving?'disabled':''}>
+        ${ST.saving?'<span class="spinner"></span>Guardando...':'Guardar'}
+      </button>
     </div>
   </div></div>`;
 }
@@ -562,9 +573,12 @@ function renderTireModal(bus){
       <div class="form-row"><label>Costo ($, si es nueva)</label><input type="number" id="tm-cost" value="0"></div>
       <div class="form-row"><label>Notas</label><input type="text" id="tm-notes" placeholder="Opcional"></div>
     </div>
+    ${ST.modalErr?`<div class="modal-err">${ST.modalErr}</div>`:''}
     <div class="modal-btns">
-      <button class="btn" onclick="ST.modal=null;ST.tirePrePos=null;ST.tirePreEvent=null;render()">Cancelar</button>
-      <button class="btn primary" onclick="doSaveTire('${bus.id}')">Guardar</button>
+      <button class="btn" onclick="ST.modal=null;ST.tirePrePos=null;ST.tirePreEvent=null;ST.modalErr='';render()">Cancelar</button>
+      <button class="btn primary" onclick="doSaveTire('${bus.id}')" ${ST.saving?'disabled':''}>
+        ${ST.saving?'<span class="spinner"></span>Guardando...':'Guardar'}
+      </button>
     </div>
   </div></div>`;
 }
@@ -588,9 +602,12 @@ function renderBusModal(){
       </div>
     </div>
     <div class="form-row"><label>KM iniciales (odómetro)</label><input type="number" id="bm-km" value="0"></div>
+    ${ST.modalErr?`<div class="modal-err">${ST.modalErr}</div>`:''}
     <div class="modal-btns">
-      <button class="btn" onclick="ST.modal=null;render()">Cancelar</button>
-      <button class="btn primary" onclick="doSaveBus()">Agregar unidad</button>
+      <button class="btn" onclick="ST.modal=null;ST.modalErr='';render()">Cancelar</button>
+      <button class="btn primary" onclick="doSaveBus()" ${ST.saving?'disabled':''}>
+        ${ST.saving?'<span class="spinner"></span>Guardando...':'Agregar unidad'}
+      </button>
     </div>
   </div></div>`;
 }
@@ -601,36 +618,48 @@ function openTireAt(pos){ ST.tirePrePos=pos; ST.tirePreEvent='new'; ST.modal='ti
 function openTireAction(pos,event){ ST.tirePrePos=pos; ST.tirePreEvent=event; ST.modal='tire'; render(); }
 
 async function doSaveLog(busId){
+  if(ST.saving) return;
   const bus=ST.buses.find(b=>b.id===busId);
   if(!bus) return;
-  const type=document.getElementById('lm-type').value;
   const date=document.getElementById('lm-date').value;
+  if(!date){ ST.modalErr='La fecha es obligatoria'; render(); return; }
+  const type=document.getElementById('lm-type').value;
   const kmRaw=parseInt(document.getElementById('lm-km').value)||0;
   const desc=document.getElementById('lm-desc').value.trim();
   const cost=parseFloat(document.getElementById('lm-cost').value)||0;
   const tech=document.getElementById('lm-tech').value.trim();
-  const kmAfter=Math.max(kmRaw, bus.km);
+  const kmAfter=Math.max(kmRaw,bus.km);
+  const prevKm=bus.km;
   bus.km=kmAfter;
-  const log={id:uid(), bus_id:busId, city:bus.city, type, date, description:desc, cost, technician:tech, km_after:kmAfter, ts:Date.now()};
+  const log={id:uid(),bus_id:busId,city:bus.city,type,date,description:desc,cost,technician:tech,km_after:kmAfter,ts:Date.now()};
   ST.logs.unshift(log);
-  await dbSaveBus(bus);
-  await dbSaveLog(log);
-  ST.modal=null; render();
+  ST.saving=true; ST.modalErr=''; render();
+  const {error:e1}=await dbSaveBus(bus);
+  const {error:e2}=await dbSaveLog(log);
+  if(e1||e2){
+    bus.km=prevKm; ST.logs=ST.logs.filter(l=>l.id!==log.id);
+    ST.saving=false; ST.modalErr='Error al guardar. Intenta de nuevo.'; render(); return;
+  }
+  ST.saving=false; ST.modal=null; ST.modalErr=''; render();
 }
 
 async function doSaveTire(busId){
+  if(ST.saving) return;
   const bus=ST.buses.find(b=>b.id===busId);
   if(!bus) return;
+  const date=document.getElementById('tm-date').value;
+  if(!date){ ST.modalErr='La fecha es obligatoria'; render(); return; }
   const pos=document.getElementById('tm-pos').value;
   const event=document.getElementById('tm-event').value;
-  const date=document.getElementById('tm-date').value;
   const kmRaw=parseInt(document.getElementById('tm-km').value)||0;
   const brand=document.getElementById('tm-brand').value.trim();
   const cond=document.getElementById('tm-cond').value;
   const cost=parseFloat(document.getElementById('tm-cost').value)||0;
   const notes=document.getElementById('tm-notes').value.trim();
   const kmAfter=Math.max(kmRaw,bus.km);
-  bus.km=kmAfter;
+  // snapshot for rollback
+  const prevKm=bus.km;
+  const prevTires=JSON.parse(JSON.stringify(bus.tires||{}));
   if(!bus.tires) bus.tires={};
   const histEntry={date,event:TIRE_EVENTS[event],brand,kmAt:kmAfter,notes};
   const prev=bus.tires[pos];
@@ -644,13 +673,19 @@ async function doSaveTire(busId){
       const swapEntry={date,event:TIRE_EVENTS['rotate'],brand:dstTire.brand||'',kmAt:kmAfter,notes};
       bus.tires[pos]={...dstTire,installDate:date,kmAt:kmAfter,history:[swapEntry,...(dstTire.history||[])]};
     } else { delete bus.tires[pos]; }
+    bus.km=kmAfter;
     const arrow=dstTire?'↔':'→';
     const desc=`Rotación: ${POS_NAMES[pos]} ${arrow} ${POS_NAMES[dest]}${srcTire.brand?' · '+srcTire.brand:''}`;
     const log={id:uid(),bus_id:busId,city:bus.city,type:'tire',date,description:desc,cost,km_after:kmAfter,ts:Date.now()};
     ST.logs.unshift(log);
-    await dbSaveLog(log);
-    await dbSaveBus(bus);
-    ST.modal=null; ST.tirePrePos=null; ST.tirePreEvent=null; ST.selTire=dest; ST.tab='tires';
+    ST.saving=true; ST.modalErr=''; render();
+    const {error:e1}=await dbSaveLog(log);
+    const {error:e2}=await dbSaveBus(bus);
+    if(e1||e2){
+      bus.km=prevKm; bus.tires=prevTires; ST.logs=ST.logs.filter(l=>l.id!==log.id);
+      ST.saving=false; ST.modalErr='Error al guardar. Intenta de nuevo.'; render(); return;
+    }
+    ST.saving=false; ST.modal=null; ST.tirePrePos=null; ST.tirePreEvent=null; ST.modalErr=''; ST.selTire=dest; ST.tab='tires';
     showToast(`Rotación guardada: ${POS_NAMES[pos]} ${arrow} ${POS_NAMES[dest]}`);
     return;
   }
@@ -659,37 +694,60 @@ async function doSaveTire(busId){
   } else {
     bus.tires[pos]={brand:brand||(prev?.brand||''),installDate:date,kmAt:kmAfter,cond,history:[histEntry,...(prev?.history||[])]};
   }
-  if(cost>0){ const log={id:uid(),bus_id:busId,city:bus.city,type:'tire',date,description:`${TIRE_EVENTS[event]} · ${POS_NAMES[pos]}${brand?' · '+brand:''}`,cost,km_after:kmAfter,ts:Date.now()}; ST.logs.unshift(log); await dbSaveLog(log); }
-  await dbSaveBus(bus);
-  ST.modal=null; ST.tirePrePos=null; ST.tirePreEvent=null; ST.selTire=pos; ST.tab='tires'; render();
+  bus.km=kmAfter;
+  let logEntry=null;
+  if(cost>0){
+    logEntry={id:uid(),bus_id:busId,city:bus.city,type:'tire',date,description:`${TIRE_EVENTS[event]} · ${POS_NAMES[pos]}${brand?' · '+brand:''}`,cost,km_after:kmAfter,ts:Date.now()};
+    ST.logs.unshift(logEntry);
+  }
+  ST.saving=true; ST.modalErr=''; render();
+  const {error:e1}=await dbSaveBus(bus);
+  const {error:e2}=logEntry?await dbSaveLog(logEntry):{error:null};
+  if(e1||e2){
+    bus.km=prevKm; bus.tires=prevTires;
+    if(logEntry) ST.logs=ST.logs.filter(l=>l.id!==logEntry.id);
+    ST.saving=false; ST.modalErr='Error al guardar. Intenta de nuevo.'; render(); return;
+  }
+  ST.saving=false; ST.modal=null; ST.tirePrePos=null; ST.tirePreEvent=null; ST.modalErr=''; ST.selTire=pos; ST.tab='tires'; render();
 }
 
 async function doSaveBus(){
+  if(ST.saving) return;
   const name=document.getElementById('bm-name').value.trim();
+  if(!name){ ST.modalErr='El nombre es obligatorio'; render(); return; }
   const type=document.getElementById('bm-type').value;
   const client=document.getElementById('bm-client').value;
   const city=document.getElementById('bm-city').value;
   const km=parseInt(document.getElementById('bm-km').value)||0;
-  if(!name) return;
   const bus={id:uid(),name,type,client,city,km,tires:{}};
   ST.buses.push(bus);
-  await dbSaveBus(bus);
-  ST.modal=null; ST.busId=bus.id; render();
+  ST.saving=true; ST.modalErr=''; render();
+  const {error}=await dbSaveBus(bus);
+  if(error){
+    ST.buses=ST.buses.filter(b=>b.id!==bus.id);
+    ST.saving=false; ST.modalErr='Error al guardar. Intenta de nuevo.'; render(); return;
+  }
+  ST.saving=false; ST.modal=null; ST.modalErr=''; ST.busId=bus.id; render();
 }
 
 async function doDelLog(id){
+  if(!confirm('¿Eliminar este registro?')) return;
+  const prev=[...ST.logs];
   ST.logs=ST.logs.filter(l=>l.id!==id);
-  await dbDeleteLog(id);
   render();
+  const {error}=await dbDeleteLog(id);
+  if(error){ ST.logs=prev; showToast('Error al eliminar. Intenta de nuevo.','error'); }
 }
 
 async function doDelBus(id){
   const bus=ST.buses.find(b=>b.id===id);
   if(!confirm(`¿Eliminar ${bus?.name}? Se borra todo su historial.`)) return;
+  const prevBuses=[...ST.buses], prevLogs=[...ST.logs];
   ST.buses=ST.buses.filter(b=>b.id!==id);
   ST.logs=ST.logs.filter(l=>(l.bus_id||l.busId)!==id);
-  await dbDeleteBus(id);
   ST.busId=null; render();
+  const {error}=await dbDeleteBus(id);
+  if(error){ ST.buses=prevBuses; ST.logs=prevLogs; ST.busId=id; showToast('Error al eliminar. Intenta de nuevo.','error'); }
 }
 
 // keyboard shortcut: Enter on password field
