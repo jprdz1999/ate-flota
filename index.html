@@ -143,6 +143,18 @@ const CITIES = {
 const CLIENTS = ['Bimbo','Barcel','Oxxo','Maersk','Sensata','Dreams Jade','Bachoco','Otro'];
 const LOG_TYPES = {oil:'Aceite / Preventivo', repair:'Correctivo', km:'Solo KM'};
 const TIRE_EVENTS = {new:'Llanta nueva', rotate:'Rotación', recap:'Reencauche', retire:'Baja'};
+const OIL_ITEMS = [
+  {id:'aceite',      label:'Aceite',               askType:true},
+  {id:'filtro_ace',  label:'Filtro de aceite',      askType:false},
+  {id:'filtro_aire', label:'Filtro de aire',         askType:false},
+  {id:'filtro_comb', label:'Filtro de combustible',  askType:false},
+  {id:'bujias',      label:'Bujías',                 askType:false},
+  {id:'liq_frenos',  label:'Líquido de frenos',      askType:false},
+  {id:'refrigerante',label:'Refrigerante',            askType:false},
+  {id:'transmision', label:'Transmisión / diferencial',askType:false},
+];
+const OIL_TYPES = ['5W-30','5W-40','15W-40','10W-40','0W-20','Otro'];
+
 const POS_CFG = [
   {id:'FL', lbl:'Del\nIzq', x:26,y:46,w:22,h:42,spare:false},
   {id:'FR', lbl:'Del\nDer', x:192,y:46,w:22,h:42,spare:false},
@@ -270,12 +282,23 @@ function condFill(c){ return c==='good'?'#639922':c==='mid'?'#EF9F27':c==='worn'
 function condPill(c){ return c==='good'?'pill-good':c==='mid'?'pill-mid':c==='worn'?'pill-worn':'pill-empty'; }
 function condLabel(c){ return c==='good'?'Buena':c==='mid'?'Desgaste medio':c==='worn'?'Desgaste alto':'Sin datos'; }
 
+function oilThresholds(bus){
+  return bus.type==='bus'
+    ? {warn:25000, alert:30000}
+    : {warn:7000,  alert:10000};
+}
+
 function getAlerts(bus){
   const alerts=[], logs=busLogs(bus.id);
   const lastOil=logs.find(l=>l.type==='oil');
-  if(!lastOil) alerts.push('Sin aceite registrado');
-  else { const km=bus.km-(lastOil.km_after||lastOil.kmAfter||0); if(km>=5000) alerts.push(`Aceite: ${fmt(km)} km`); else if(km>=4000) alerts.push(`Aceite próximo: ${fmt(km)} km`); }
-  Object.entries(bus.tires||{}).forEach(([pos,t])=>{ if(!t) return; const km=tireKM(t,bus.km); if(km>=70000) alerts.push(`${POS_NAMES[pos]}: ${fmt(km)} km`); });
+  const {warn,alert} = oilThresholds(bus);
+  if(!lastOil) alerts.push({msg:'Sin aceite registrado', level:'alert'});
+  else {
+    const km=bus.km-(lastOil.km_after||lastOil.kmAfter||0);
+    if(km>=alert)      alerts.push({msg:`Aceite vencido: ${fmt(km)} km`, level:'alert'});
+    else if(km>=warn)  alerts.push({msg:`Aceite próximo: ${fmt(km)} km`, level:'warn'});
+  }
+  Object.entries(bus.tires||{}).forEach(([pos,t])=>{ if(!t) return; const km=tireKM(t,bus.km); if(km>=70000) alerts.push({msg:`${POS_NAMES[pos]}: ${fmt(km)} km`, level:'alert'}); });
   return alerts;
 }
 
@@ -328,30 +351,40 @@ function renderApp(){
   h+=`<div class="fleet-grid">`;
   shown.forEach(b=>{
     const al=getAlerts(b);
+    const dotColor = al.some(a=>a.level==='alert') ? 'var(--red)' : al.some(a=>a.level==='warn') ? '#EF9F27' : null;
     h+=`<div class="bus-chip${ST.busId===b.id?' active':''}" onclick="selectBus('${b.id}')">
-      <div class="cn">${b.name}${al.length?`<span class="alert-dot"></span>`:''}
+      <div class="cn">${b.name}${dotColor?`<span style="width:7px;height:7px;border-radius:50%;background:${dotColor};flex-shrink:0;display:inline-block;margin-left:5px"></span>`:''}
       </div><div class="cm">${b.client}${isAdmin?' · '+CITIES[b.city]?.name:''}<br>${fmt(b.km)} km</div>
-    </div>`;
-  });
+    </div>`;;
   h+=`<div class="bus-chip chip-add" onclick="ST.modal='bus';render()">+ Nueva unidad</div></div>`;
 
   if(!bus){
     h+=`<div class="empty-state">Selecciona una unidad arriba para ver su historial</div>`;
   } else {
     const al=getAlerts(bus);
-    if(al.length) h+=`<div class="alert-bar">⚠ ${al.join(' &nbsp;·&nbsp; ')}</div>`;
+    if(al.length){
+      const hasAlert = al.some(a=>a.level==='alert');
+      const barBg    = hasAlert ? 'var(--red-bg)' : 'var(--amber-bg)';
+      const barBdr   = hasAlert ? 'var(--red)'    : 'var(--amber)';
+      const barClr   = hasAlert ? 'var(--red-dark)': 'var(--amber-dark)';
+      const msgs     = al.map(a=>`<span style="color:${a.level==='alert'?'var(--red-dark)':'var(--amber-dark)'}">${a.msg}</span>`).join(' &nbsp;·&nbsp; ');
+      h+=`<div class="alert-bar" style="background:${barBg};border-color:${barBdr};color:${barClr}">⚠ ${msgs}</div>`;
+    }
     h+=`<div class="tab-row">
       <button class="tab${ST.tab==='log'?' active':''}" onclick="ST.tab='log';render()">Historial</button>
       <button class="tab${ST.tab==='tires'?' active':''}" onclick="ST.tab='tires';render()">Llantas</button>
+      <button class="tab${ST.tab==='oil'?' active':''}" onclick="ST.tab='oil';render()">Aceite</button>
       <button class="tab${ST.tab==='stats'?' active':''}" onclick="ST.tab='stats';render()">Resumen</button>
     </div>`;
     if(ST.tab==='log')   h+=renderLog(bus);
     if(ST.tab==='tires') h+=renderTires(bus);
+    if(ST.tab==='oil')   h+=renderOil(bus);
     if(ST.tab==='stats') h+=renderStats(bus);
   }
 
   if(ST.modal==='log'  && bus) h+=renderLogModal(bus);
   if(ST.modal==='tire' && bus) h+=renderTireModal(bus);
+  if(ST.modal==='oil'  && bus) h+=renderOilModal(bus);
   if(ST.modal==='bus')         h+=renderBusModal();
   return h;
 }
@@ -367,8 +400,8 @@ function renderLog(bus){
   <div class="kpi-row">
     <div class="kpi"><div class="kl">Odómetro</div><div class="kv">${fmt(bus.km)}</div><div class="ks">km totales</div></div>
     <div class="kpi"><div class="kl">Desde último aceite</div>
-      <div class="kv${kmOil===null?'':kmOil>=5000?' alert':kmOil>=4000?' warn':''}">${kmOil!==null?fmt(kmOil):'—'}</div>
-      <div class="ks">km${kmOil!==null?(kmOil>=5000?' ⚠ VENCIDO':kmOil>=4000?' próximo a vencer':''):''}</div></div>
+      ${(()=>{ const {warn:w,alert:a}=oilThresholds(bus); const cls=kmOil===null?'':kmOil>=a?' alert':kmOil>=w?' warn':''; const lbl=kmOil===null?'':kmOil>=a?' ⚠ VENCIDO':kmOil>=w?' próximo a vencer':''; return `<div class="kv${cls}">${kmOil!==null?fmt(kmOil):'—'}</div><div class="ks">km${lbl}</div>`; })()}
+    </div>
     <div class="kpi"><div class="kl">Gasto total</div><div class="kv">${mxn(total)}</div><div class="ks">registrado</div></div>
   </div>
   <div class="card"><div class="section-hdr">
@@ -490,6 +523,122 @@ function renderTires(bus){
   }
   h+=`</div></div>`;
   return h;
+}
+
+
+function renderOil(bus){
+  const logs = busLogs(bus.id).filter(l=>l.type==='oil');
+  const lastOil = logs[0]||null;
+  const kmSince = lastOil ? bus.km-(lastOil.km_after||0) : null;
+  const nextKm  = lastOil ? (lastOil.km_after||0)+5000 : null;
+
+  let h=`<div class="two-col"><div>`;
+
+  h+=`<div class="kpi-row">
+    <div class="kpi"><div class="kl">Último cambio</div><div class="kv" style="font-size:15px">${lastOil?lastOil.date:'—'}</div><div class="ks">${lastOil?fmt(lastOil.km_after||0)+' km':'sin registro'}</div></div>
+    <div class="kpi"><div class="kl">KM desde último</div>
+      ${(()=>{ const {warn:w,alert:a}=oilThresholds(bus); const cls=kmSince===null?'':kmSince>=a?' alert':kmSince>=w?' warn':''; const lbl=kmSince===null?'':kmSince>=a?'⚠ VENCIDO':kmSince>=w?'próximo a vencer':'al día'; return `<div class="kv${cls}">${kmSince!==null?fmt(kmSince):'—'}</div><div class="ks">${lbl}</div>`; })()}
+    </div>
+    <div class="kpi"><div class="kl">Próximo cambio</div><div class="kv" style="font-size:15px">${nextKm?fmt(nextKm):'—'}</div><div class="ks">km estimado</div></div>
+  </div>`;
+
+  h+=`<div class="card"><div class="section-hdr"><h4>Historial de servicios</h4>
+    <button class="btn sm primary" onclick="ST.modal='oil';render()">+ Nuevo servicio</button>
+  </div>`;
+
+  if(!logs.length){
+    h+=`<div class="empty-state">Sin servicios registrados para esta unidad</div>`;
+  } else {
+    logs.forEach(l=>{
+      const items = l.oil_items||{};
+      const changed = OIL_ITEMS.filter(i=>items[i.id]==='si').map(i=>i.label);
+      const notChanged = OIL_ITEMS.filter(i=>items[i.id]==='no').map(i=>i.label);
+      h+=`<div class="log-item">
+        <div class="dot d-oil"></div>
+        <div style="flex:1">
+          <div class="li-title">${l.description||'Servicio de aceite'}${l.oil_type?' · '+l.oil_type:''}</div>
+          <div class="li-meta">${l.date} &nbsp;·&nbsp; ${fmt(l.km_after||0)} km${l.technician?' &nbsp;·&nbsp; '+l.technician:''}</div>
+          ${changed.length?`<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px">
+            ${changed.map(c=>`<span style="font-size:11px;padding:2px 7px;border-radius:99px;background:var(--green-bg);color:var(--green-dark);font-weight:500">✓ ${c}</span>`).join('')}
+            ${notChanged.map(c=>`<span style="font-size:11px;padding:2px 7px;border-radius:99px;background:var(--bg2);color:var(--text3)">${c}</span>`).join('')}
+          </div>`:''}
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
+          <span class="li-cost${l.cost?'':' zero'}">${l.cost?mxn(l.cost):'—'}</span>
+          <button class="btn sm ghost" onclick="doDelLog('${l.id}')">✕</button>
+        </div>
+      </div>`;
+    });
+  }
+  h+=`</div></div>`;
+
+  // right panel — last service summary
+  h+=`<div>`;
+  if(lastOil && lastOil.oil_items){
+    h+=`<div class="card"><h4 style="margin-bottom:0.75rem">Último servicio — detalle</h4>`;
+    h+=`<div class="stat-row"><span class="stat-lbl">Fecha</span><span>${lastOil.date}</span></div>`;
+    h+=`<div class="stat-row"><span class="stat-lbl">KM</span><span>${fmt(lastOil.km_after||0)}</span></div>`;
+    if(lastOil.oil_type) h+=`<div class="stat-row"><span class="stat-lbl">Tipo de aceite</span><span>${lastOil.oil_type}</span></div>`;
+    if(lastOil.technician) h+=`<div class="stat-row"><span class="stat-lbl">Técnico</span><span>${lastOil.technician}</span></div>`;
+    if(lastOil.cost) h+=`<div class="stat-row"><span class="stat-lbl">Costo</span><span>${mxn(lastOil.cost)}</span></div>`;
+    h+=`<div style="margin-top:0.75rem;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px">Checklist</div>`;
+    OIL_ITEMS.forEach(item=>{
+      const val = lastOil.oil_items[item.id];
+      if(!val||val==='na') return;
+      const ok = val==='si';
+      h+=`<div class="stat-row">
+        <span class="stat-lbl">${item.label}</span>
+        <span class="pill ${ok?'pill-good':'pill-worn'}" style="font-size:10px">${ok?'Cambiado':'No cambiado'}</span>
+      </div>`;
+    });
+    h+=`</div>`;
+  } else {
+    h+=`<div class="card" style="min-height:160px;display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:13px">Sin servicios aún</div>`;
+  }
+  h+=`</div></div>`;
+  return h;
+}
+
+function renderOilModal(bus){
+  const itemsHtml = OIL_ITEMS.map(item=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:0.5px solid var(--border)">
+      <span style="font-size:13px;font-weight:500">${item.label}</span>
+      <div style="display:flex;gap:6px">
+        <button id="oi-${item.id}-si"  class="btn sm oil-opt" onclick="setOilItem('${item.id}','si')" >Sí</button>
+        <button id="oi-${item.id}-no"  class="btn sm oil-opt" onclick="setOilItem('${item.id}','no')" >No</button>
+        <button id="oi-${item.id}-na"  class="btn sm oil-opt active-na" onclick="setOilItem('${item.id}','na')">N/A</button>
+      </div>
+    </div>`).join('');
+
+  return `<div class="modal-wrap"><div class="modal" style="max-width:500px">
+    <h3>Servicio de aceite — ${bus.name}</h3>
+    <div class="fg2" style="margin-bottom:4px">
+      <div class="form-row"><label>Fecha</label><input type="date" id="om-date" value="${today()}"></div>
+      <div class="form-row"><label>KM actuales (odómetro)</label><input type="number" id="om-km" value="${bus.km}"></div>
+    </div>
+    <div class="fg2" style="margin-bottom:12px">
+      <div class="form-row"><label>Tipo de aceite</label>
+        <select id="om-oiltype">${OIL_TYPES.map(t=>`<option>${t}</option>`).join('')}</select>
+      </div>
+      <div class="form-row"><label>Costo total ($)</label><input type="number" id="om-cost" value="0" min="0"></div>
+    </div>
+    <div style="font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px">¿Qué se hizo?</div>
+    <div id="oil-checklist" style="margin-bottom:12px">${itemsHtml}</div>
+    <div class="fg2">
+      <div class="form-row"><label>Técnico / Taller</label><input type="text" id="om-tech" placeholder="Nombre o taller"></div>
+      <div class="form-row"><label>Notas</label><input type="text" id="om-notes" placeholder="Opcional"></div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn" onclick="ST.modal=null;render()">Cancelar</button>
+      <button class="btn primary" onclick="doSaveOil('${bus.id}')">Guardar servicio</button>
+    </div>
+  </div></div>
+  <style>
+    .oil-opt{color:var(--text2);min-width:38px;text-align:center}
+    .oil-opt.active-si{background:var(--green-bg);color:var(--green-dark);border-color:var(--green)}
+    .oil-opt.active-no{background:var(--red-bg);color:var(--red-dark);border-color:var(--red)}
+    .oil-opt.active-na{background:var(--bg2);color:var(--text3);border-color:var(--border)}
+  </style>`;
 }
 
 function renderStats(bus){
@@ -628,6 +777,48 @@ function renderBusModal(){
 function selectBus(id){ ST.busId=id; ST.selTire=null; ST.tab='log'; render(); }
 function openTireAt(pos){ ST.tirePrePos=pos; ST.tirePreEvent='new'; ST.modal='tire'; render(); }
 function openTireAction(pos,event){ ST.tirePrePos=pos; ST.tirePreEvent=event; ST.modal='tire'; render(); }
+
+let _oilItems = {};
+function setOilItem(id,val){
+  _oilItems[id]=val;
+  ['si','no','na'].forEach(v=>{
+    const btn=document.getElementById('oi-'+id+'-'+v);
+    if(btn){ btn.className='btn sm oil-opt'+(v===val?' active-'+v:''); }
+  });
+}
+
+async function doSaveOil(busId){
+  const bus=ST.buses.find(b=>b.id===busId);
+  if(!bus) return;
+  const date      = document.getElementById('om-date').value;
+  const kmRaw     = parseInt(document.getElementById('om-km').value)||0;
+  const oilType   = document.getElementById('om-oiltype').value;
+  const cost      = parseFloat(document.getElementById('om-cost').value)||0;
+  const tech      = document.getElementById('om-tech').value.trim();
+  const notes     = document.getElementById('om-notes').value.trim();
+  const kmAfter   = Math.max(kmRaw, bus.km);
+  bus.km = kmAfter;
+  // fill any untouched items as 'na'
+  const items = {};
+  OIL_ITEMS.forEach(i=>{ items[i.id] = _oilItems[i.id]||'na'; });
+  const changed = OIL_ITEMS.filter(i=>items[i.id]==='si').map(i=>i.label).join(', ');
+  const desc = `Aceite ${oilType}${changed?' · '+changed:''}${notes?' · '+notes:''}`;
+  const log = {
+    id:uid(), bus_id:busId, city:bus.city, type:'oil',
+    date, description:desc, cost, technician:tech,
+    km_after:kmAfter, oil_type:oilType, oil_items:items, ts:Date.now()
+  };
+  ST.logs.unshift(log);
+  _oilItems = {};
+  await dbSaveBus(bus);
+  await dbSaveOil(log);
+  ST.modal=null; ST.tab='oil'; render();
+}
+
+async function dbSaveOil(log){
+  if(!sb){ saveLS(); return; }
+  await sb.from('service_logs').insert(log);
+}
 
 async function doSaveLog(busId){
   const bus=ST.buses.find(b=>b.id===busId);
