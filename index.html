@@ -390,11 +390,9 @@ function renderApp(){
 }
 
 function renderLog(bus){
-  const logs=busLogs(bus.id);
-  const filtered=ST.logFilter==='all'?logs:logs.filter(l=>l.type===ST.logFilter);
-  const total=logs.reduce((s,l)=>s+(l.cost||0),0);
-  const lastOil=logs.find(l=>l.type==='oil');
-  const kmOil=lastOil?bus.km-(lastOil.km_after||lastOil.kmAfter||0):null;
+  const oilT = oilThresholds(bus);
+  const kmOilClass = kmOil===null?'':kmOil>=oilT.alert?' alert':kmOil>=oilT.warn?' warn':'';
+  const kmOilLabel = kmOil===null?'':kmOil>=oilT.alert?' ⚠ VENCIDO':kmOil>=oilT.warn?' próximo a vencer':'';
 
   let h=`<div class="two-col"><div>
   <div class="kpi-row">
