@@ -169,15 +169,22 @@ let ST = {
 async function init(){
   try {
     sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    // Test connection; if Supabase not configured, fall back to localStorage
-    const {error} = await sb.from('buses').select('id').limit(1);
-    if(error && (SUPABASE_URL==='YOUR_SUPABASE_URL' || error.message.includes('fetch'))) {
-      useLocalStorage();
-    } else {
-      await loadFromSupabase();
+    const {data:buses, error} = await sb.from('buses').select('*');
+    if(error){ console.warn('Supabase error, using localStorage:', error.message); useLocalStorage(); }
+    else {
+      const {data:logs} = await sb.from('service_logs').select('*').order('date',{ascending:false});
+      ST.buses = buses||[];
+      ST.logs  = logs||[];
+      if(ST.buses.length===0){ seedData(); await pushSeedToSupabase(); }
     }
-  } catch(e) { useLocalStorage(); }
+  } catch(e){ console.warn('Supabase unreachable, using localStorage:', e); useLocalStorage(); }
   render();
+}
+
+async function pushSeedToSupabase(){
+  for(const bus of ST.buses){
+    await sb.from('buses').upsert(bus);
+  }
 }
 
 // ─── LOCAL STORAGE FALLBACK (used until Supabase is configured) ──────────────
@@ -223,15 +230,14 @@ function seedData(){
 
 // ─── SUPABASE DATA LAYER ─────────────────────────────────────────────────────
 async function loadFromSupabase(){
+  // Data already loaded in init(); this just filters the in-memory state by city
   const city = ST.auth;
-  let bq = sb.from('buses').select('*');
-  if(city && city!=='admin') bq = bq.eq('city', city);
-  const {data:buses} = await bq;
-  let lq = sb.from('service_logs').select('*').order('date',{ascending:false});
-  if(city && city!=='admin') lq = lq.eq('city', city);
-  const {data:logs} = await lq;
-  ST.buses = buses||[];
-  ST.logs  = logs||[];
+  if(city && city !== 'admin'){
+    const {data:buses} = await sb.from('buses').select('*').eq('city', city);
+    const {data:logs}  = await sb.from('service_logs').select('*').eq('city', city).order('date',{ascending:false});
+    ST.buses = buses||[];
+    ST.logs  = logs||[];
+  }
 }
 
 async function dbSaveBus(bus){
@@ -295,8 +301,11 @@ function renderLogin(){
 
 function doLogin(){
   const pw=document.getElementById('pw')?.value||'';
-  if(pw===CITIES[ST.loginCity]?.pw){ ST.auth=ST.loginCity; render(); }
-  else { ST.loginErr='Contraseña incorrecta'; render(); }
+  if(pw===CITIES[ST.loginCity]?.pw){
+    ST.auth=ST.loginCity;
+    if(sb) loadFromSupabase().then(render);
+    else render();
+  } else { ST.loginErr='Contraseña incorrecta'; render(); }
 }
 
 function renderApp(){
