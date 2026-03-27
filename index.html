@@ -117,6 +117,8 @@ label{font-size:12px;color:var(--text2);display:block;margin-bottom:4px}
 .filter-btn{padding:4px 11px;font-size:12px;border:0.5px solid var(--border);border-radius:99px;background:transparent;color:var(--text2);cursor:pointer;font-weight:500}
 .filter-btn.active{background:var(--bg2);color:var(--text);border-color:var(--border2)}
 .loading-screen{display:flex;align-items:center;justify-content:center;min-height:200px;color:var(--text2);font-size:13px;gap:8px}
+.toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:var(--green);color:#fff;padding:10px 22px;border-radius:var(--radius);font-size:13px;font-weight:500;z-index:999;pointer-events:none;box-shadow:0 2px 12px rgba(0,0,0,0.18);animation:toastIn 0.2s ease}
+@keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
 </style>
 </head>
 <body>
@@ -162,7 +164,7 @@ let ST = {
   auth:null, busId:null, tab:'log', selTire:null,
   modal:null, logFilter:'all', tirePrePos:null, tirePreEvent:null,
   loginCity:null, loginErr:'', saving:false,
-  adminFilter:'all', buses:[], logs:[]
+  adminFilter:'all', buses:[], logs:[], toast:null
 };
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
@@ -280,7 +282,12 @@ function getAlerts(bus){
 }
 
 // ─── RENDER ──────────────────────────────────────────────────────────────────
-function render(){ document.getElementById('root').innerHTML = ST.auth ? renderApp() : renderLogin(); }
+function render(){
+  document.getElementById('root').innerHTML = ST.auth ? renderApp() : renderLogin();
+  document.querySelectorAll('.toast').forEach(t=>t.remove());
+  if(ST.toast){ const t=document.createElement('div'); t.className='toast'; t.textContent=ST.toast; document.body.appendChild(t); }
+}
+function showToast(msg){ ST.toast=msg; render(); setTimeout(()=>{ ST.toast=null; document.querySelectorAll('.toast').forEach(e=>e.remove()); },2500); }
 
 function renderLogin(){
   return `<div class="login-wrap"><div class="login-box">
@@ -574,8 +581,12 @@ function renderTireModal(bus){
         <select id="tm-pos">${positions.map(p=>`<option value="${p.id}"${p.id===prePos?' selected':''}>${POS_NAMES[p.id]}</option>`).join('')}</select>
       </div>
       <div class="form-row"><label>Evento</label>
-        <select id="tm-event">${Object.entries(TIRE_EVENTS).map(([k,v])=>`<option value="${k}"${k===ST.tirePreEvent?' selected':''}>${v}</option>`).join('')}</select>
+        <select id="tm-event" onchange="document.getElementById('tm-dest-row').style.display=this.value==='rotate'?'block':'none'">${Object.entries(TIRE_EVENTS).map(([k,v])=>`<option value="${k}"${k===ST.tirePreEvent?' selected':''}>${v}</option>`).join('')}</select>
       </div>
+    </div>
+    <div class="form-row" id="tm-dest-row" style="display:${ST.tirePreEvent==='rotate'?'block':'none'}">
+      <label>Posición destino</label>
+      <select id="tm-dest">${positions.filter(p=>p.id!==prePos).map(p=>`<option value="${p.id}">${POS_NAMES[p.id]}</option>`).join('')}</select>
     </div>
     <div class="fg2">
       <div class="form-row"><label>Fecha</label><input type="date" id="tm-date" value="${today()}"></div>
@@ -663,6 +674,26 @@ async function doSaveTire(busId){
   if(!bus.tires) bus.tires={};
   const histEntry={date,event:TIRE_EVENTS[event],brand,kmAt:kmAfter,notes};
   const prev=bus.tires[pos];
+  if(event==='rotate'){
+    const dest=document.getElementById('tm-dest').value;
+    const srcTire={...(prev||{})};
+    const dstTire=bus.tires[dest]?{...bus.tires[dest]}:null;
+    const rotEntry={date,event:TIRE_EVENTS['rotate'],brand:srcTire.brand||brand,kmAt:kmAfter,notes};
+    bus.tires[dest]={brand:srcTire.brand||brand,installDate:date,kmAt:kmAfter,cond,history:[rotEntry,...(srcTire.history||[])]};
+    if(dstTire){
+      const swapEntry={date,event:TIRE_EVENTS['rotate'],brand:dstTire.brand||'',kmAt:kmAfter,notes};
+      bus.tires[pos]={...dstTire,installDate:date,kmAt:kmAfter,history:[swapEntry,...(dstTire.history||[])]};
+    } else { delete bus.tires[pos]; }
+    const arrow=dstTire?'↔':'→';
+    const desc=`Rotación: ${POS_NAMES[pos]} ${arrow} ${POS_NAMES[dest]}${srcTire.brand?' · '+srcTire.brand:''}`;
+    const log={id:uid(),bus_id:busId,city:bus.city,type:'tire',date,description:desc,cost,km_after:kmAfter,ts:Date.now()};
+    ST.logs.unshift(log);
+    await dbSaveLog(log);
+    await dbSaveBus(bus);
+    ST.modal=null; ST.tirePrePos=null; ST.tirePreEvent=null; ST.selTire=dest; ST.tab='tires';
+    showToast(`Rotación guardada: ${POS_NAMES[pos]} ${arrow} ${POS_NAMES[dest]}`);
+    return;
+  }
   if(event==='retire'){
     if(prev){ if(!prev.history)prev.history=[]; prev.history.unshift(histEntry); prev.cond='worn'; }
   } else {
