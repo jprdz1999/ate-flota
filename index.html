@@ -126,20 +126,19 @@ label{font-size:12px;color:var(--text2);display:block;margin-bottom:4px}
 
 <script>
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
-// TODO: Replace with your Supabase project URL and anon key
 const SUPABASE_URL = 'https://mxxvphizdhinixnhtulm.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WB81yFJaOP0p4b7wiCcWDg_ajhjT68G';
 
 const CITIES = {
-  tj: {name:'Tijuana',     pw:'ate2024tj'},
-  mex:{name:'Mexicali',    pw:'ate2024mx'},
-  gdl:{name:'Guadalajara', pw:'ate2024gdl'},
-  ver:{name:'Veracruz',    pw:'ate2024ver'},
-  hgo:{name:'Hidalgo',     pw:'ate2024hgo'},
-  can:{name:'Cancún',      pw:'ate2024can'},
-  mer:{name:'Mérida',      pw:'ate2024mer'},
-  qro:{name:'Querétaro',   pw:'ate2024qro'},
-  admin:{name:'Admin — Todas', pw:'ateADMIN2024'}
+  tj:  {name:'Tijuana'},
+  mex: {name:'Mexicali'},
+  gdl: {name:'Guadalajara'},
+  ver: {name:'Veracruz'},
+  hgo: {name:'Hidalgo'},
+  can: {name:'Cancún'},
+  mer: {name:'Mérida'},
+  qro: {name:'Querétaro'},
+  admin:{name:'Admin — Todas'}
 };
 
 const CLIENTS = ['Bimbo','Barcel','Oxxo','Maersk','Sensata','Dreams Jade','Bachoco','Otro'];
@@ -171,91 +170,39 @@ let ST = {
 async function init(){
   try {
     sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    const {data:buses, error} = await sb.from('buses').select('*');
-    if(error){ console.warn('Supabase error, using localStorage:', error.message); useLocalStorage(); }
-    else {
-      const {data:logs} = await sb.from('service_logs').select('*').order('date',{ascending:false});
-      ST.buses = buses||[];
-      ST.logs  = logs||[];
-      if(ST.buses.length===0){ seedData(); await pushSeedToSupabase(); }
+    const { data:{ session } } = await sb.auth.getSession();
+    if(session){
+      const city = session.user?.user_metadata?.city;
+      if(city){ ST.auth = city; await loadFromSupabase(); }
     }
-  } catch(e){ console.warn('Supabase unreachable, using localStorage:', e); useLocalStorage(); }
+  } catch(e){ console.error('Supabase unreachable:', e); }
   render();
 }
 
-async function pushSeedToSupabase(){
-  for(const bus of ST.buses){
-    await sb.from('buses').upsert(bus);
-  }
-}
-
-// ─── LOCAL STORAGE FALLBACK (used until Supabase is configured) ──────────────
-const LS_KEY = 'ate_fleet_ls_v1';
-function useLocalStorage(){
-  sb = null;
-  const saved = localStorage.getItem(LS_KEY);
-  if(saved){ const d = JSON.parse(saved); ST.buses=d.buses||[]; ST.logs=d.logs||[]; }
-  else { seedData(); }
-}
-function saveLS(){ localStorage.setItem(LS_KEY, JSON.stringify({buses:ST.buses, logs:ST.logs})); }
-
-function seedData(){
-  const seed = [
-    {city:'tj',  name:'Toreto 79',    client:'Sensata',     type:'bus',   km:187430},
-    {city:'tj',  name:'Toreto 141',   client:'Bimbo',       type:'bus',   km:203110},
-    {city:'tj',  name:'Toreto 544',   client:'Bimbo',       type:'bus',   km:241800},
-    {city:'tj',  name:'Urvan TJ-1',   client:'Oxxo',        type:'urvan', km:94300},
-    {city:'tj',  name:'Urvan TJ-2',   client:'Bimbo',       type:'urvan', km:78500},
-    {city:'mex', name:'Urvan 2',      client:'Barcel',      type:'urvan', km:95400},
-    {city:'mex', name:'Urvan 7',      client:'Bimbo',       type:'urvan', km:88200},
-    {city:'mex', name:'Hiace 5',      client:'Barcel',      type:'urvan', km:74300},
-    {city:'mex', name:'Toreto 90',    client:'Oxxo',        type:'bus',   km:165000},
-    {city:'gdl', name:'Toreto 81',    client:'Barcel',      type:'bus',   km:167000},
-    {city:'gdl', name:'Urvan GDL-1',  client:'Bimbo',       type:'urvan', km:112000},
-    {city:'ver', name:'Urvan 20',     client:'Bimbo',       type:'urvan', km:112300},
-    {city:'ver', name:'Urvan 21',     client:'Dreams Jade', type:'urvan', km:98700},
-    {city:'ver', name:'Sprinter 84',  client:'Bimbo',       type:'urvan', km:134500},
-    {city:'ver', name:'Sprinter 85',  client:'Bimbo',       type:'urvan', km:121000},
-    {city:'hgo', name:'Toreto HGO-1', client:'Bimbo',       type:'bus',   km:143000},
-    {city:'hgo', name:'Urvan HGO-1',  client:'Barcel',      type:'urvan', km:67000},
-    {city:'can', name:'Urvan CAN-1',  client:'Dreams Jade', type:'urvan', km:55000},
-    {city:'can', name:'Urvan CAN-2',  client:'Oxxo',        type:'urvan', km:48000},
-    {city:'mer', name:'Toreto MER-1', client:'Bimbo',       type:'bus',   km:189000},
-    {city:'mer', name:'Urvan MER-1',  client:'Barcel',      type:'urvan', km:92000},
-    {city:'qro', name:'Toreto QRO-1', client:'Bachoco',     type:'bus',   km:134000},
-    {city:'qro', name:'Urvan QRO-1',  client:'Bimbo',       type:'urvan', km:81000},
-  ];
-  ST.buses = seed.map(b=>({...b, id:uid(), tires:{}}));
-  ST.logs = [];
-  saveLS();
-}
 
 // ─── SUPABASE DATA LAYER ─────────────────────────────────────────────────────
 async function loadFromSupabase(){
-  // Data already loaded in init(); this just filters the in-memory state by city
-  const city = ST.auth;
-  if(city && city !== 'admin'){
-    const {data:buses} = await sb.from('buses').select('*').eq('city', city);
-    const {data:logs}  = await sb.from('service_logs').select('*').eq('city', city).order('date',{ascending:false});
-    ST.buses = buses||[];
-    ST.logs  = logs||[];
-  }
+  // RLS policies on the server enforce city scoping — no client-side filtering needed
+  const {data:buses} = await sb.from('buses').select('*');
+  const {data:logs}  = await sb.from('service_logs').select('*').order('date',{ascending:false});
+  ST.buses = buses||[];
+  ST.logs  = logs||[];
 }
 
 async function dbSaveBus(bus){
-  if(!sb){ saveLS(); return; }
+  if(!sb) return;
   await sb.from('buses').upsert(bus);
 }
 async function dbSaveLog(log){
-  if(!sb){ saveLS(); return; }
+  if(!sb) return;
   await sb.from('service_logs').insert(log);
 }
 async function dbDeleteLog(id){
-  if(!sb){ ST.logs=ST.logs.filter(l=>l.id!==id); saveLS(); return; }
+  if(!sb) return;
   await sb.from('service_logs').delete().eq('id',id);
 }
 async function dbDeleteBus(id){
-  if(!sb){ ST.buses=ST.buses.filter(b=>b.id!==id); ST.logs=ST.logs.filter(l=>l.bus_id!==id); saveLS(); return; }
+  if(!sb) return;
   await sb.from('service_logs').delete().eq('bus_id',id);
   await sb.from('buses').delete().eq('id',id);
 }
@@ -301,18 +248,31 @@ function renderLogin(){
         <input type="password" id="pw" placeholder="••••••••" autofocus>
       </div>
       <div class="err">${ST.loginErr}</div>
-      <button class="btn primary full" onclick="doLogin()" style="margin-top:4px">Entrar</button>
+      <button class="btn primary full" onclick="doLogin()" style="margin-top:4px" ${ST.saving?'disabled':''}>
+        ${ST.saving?'<span class="spinner"></span>Verificando...':'Entrar'}
+      </button>
     `:''}
   </div></div>`;
 }
 
-function doLogin(){
+async function doLogin(){
   const pw=document.getElementById('pw')?.value||'';
-  if(pw===CITIES[ST.loginCity]?.pw){
-    ST.auth=ST.loginCity;
-    if(sb) loadFromSupabase().then(render);
-    else render();
-  } else { ST.loginErr='Contraseña incorrecta'; render(); }
+  if(!ST.loginCity||!pw) return;
+  ST.saving=true; ST.loginErr=''; render();
+  const email=`${ST.loginCity}@autobusesate.com`;
+  const {data,error}=await sb.auth.signInWithPassword({email,password:pw});
+  if(error){ ST.loginErr='Contraseña incorrecta'; ST.saving=false; render(); return; }
+  const city=data.user?.user_metadata?.city;
+  if(!city){ ST.loginErr='Usuario sin ciudad asignada. Contacta al administrador.'; ST.saving=false; render(); return; }
+  ST.auth=city; ST.saving=false;
+  await loadFromSupabase();
+  render();
+}
+
+async function doLogout(){
+  await sb.auth.signOut();
+  ST.auth=null; ST.busId=null; ST.buses=[]; ST.logs=[]; ST.adminFilter='all';
+  render();
 }
 
 function renderApp(){
@@ -327,7 +287,7 @@ function renderApp(){
       ${Object.entries(CITIES).filter(([k])=>k!=='admin').map(([k,v])=>`<option value="${k}">${v.name}</option>`).join('')}
     </select>`:`<span class="city-badge">${CITIES[ST.auth]?.name}</span>`}
     <button class="btn sm" onclick="ST.modal='bus';render()">+ Unidad</button>
-    <button class="btn sm ghost" onclick="ST.auth=null;ST.busId=null;render()">Salir</button>
+    <button class="btn sm ghost" onclick="doLogout()">Salir</button>
   </div>`;
 
   const shown=isAdmin&&ST.adminFilter!=='all'?buses.filter(b=>b.city===ST.adminFilter):buses;
