@@ -270,6 +270,15 @@ function getAlerts(bus){
   return alerts;
 }
 
+function getSubtipo(log){
+  if(log.type==='repair'){
+    const parts=(log.description||'').split(' · ');
+    return parts.length>1?parts[0]:'—';
+  }
+  const labels={oil:'Aceite / Preventivo',repair:'Correctivo',km:'Solo KM',tire:'Llanta',svc:'Cambio de aceite'};
+  return labels[log.type]||log.type||'—';
+}
+
 function applyReportFilters(){
   let rows=[...ST.logs];
   if(ST.rptBus!=='all') rows=rows.filter(l=>(l.bus_id||l.busId)===ST.rptBus);
@@ -434,6 +443,7 @@ function renderReport(){
         <th style="padding-left:1.25rem">Fecha</th>
         <th>Unidad</th>
         <th>Tipo</th>
+        <th>Subtipo</th>
         <th>Descripción</th>
         <th style="text-align:right">KM</th>
         <th>Técnico</th>
@@ -447,7 +457,8 @@ function renderReport(){
       <td style="padding-left:1.25rem;white-space:nowrap;color:var(--text2)">${l.date}</td>
       <td style="font-weight:500;white-space:nowrap">${bus?.name||'—'}</td>
       <td><span style="display:inline-flex;align-items:center;gap:5px"><span style="width:7px;height:7px;border-radius:50%;background:${typeColors[l.type]||'var(--text3)'};flex-shrink:0;display:inline-block"></span>${typeLabels[l.type]||l.type}</span></td>
-      <td style="color:var(--text2);max-width:240px">${l.description||l.desc||'—'}</td>
+      <td style="color:var(--text2);white-space:nowrap">${getSubtipo(l)}</td>
+      <td style="color:var(--text2);max-width:200px">${l.description||l.desc||'—'}</td>
       <td style="text-align:right;color:var(--text2);white-space:nowrap">${km?fmt(km)+' km':'—'}</td>
       <td style="color:var(--text2)">${l.technician||l.tech||'—'}</td>
       <td style="text-align:right;font-weight:${l.cost?600:400};padding-right:1.25rem;white-space:nowrap;color:${l.cost?'var(--text)':'var(--text3)'}">${l.cost?mxn(l.cost):'—'}</td>
@@ -901,11 +912,15 @@ async function doSaveLog(busId){
   const bus=ST.buses.find(b=>b.id===busId);
   if(!bus) return;
   const date=document.getElementById('lm-date').value;
-  if(!date){ ST.modalErr='La fecha es obligatoria'; render(); return; }
+  if(!date){ ST.modalErr='La fecha es obligatoria.'; render(); return; }
   const type=document.getElementById('lm-type').value;
-  const kmRaw=parseInt(document.getElementById('lm-km').value)||0;
+  const kmVal=document.getElementById('lm-km').value;
+  const costVal=document.getElementById('lm-cost').value;
+  if(kmVal===''){ ST.modalErr='El odómetro es obligatorio.'; render(); return; }
+  if(costVal===''){ ST.modalErr='El costo es obligatorio.'; render(); return; }
+  const kmRaw=parseInt(kmVal)||0;
   const desc=document.getElementById('lm-desc').value.trim();
-  const cost=parseFloat(document.getElementById('lm-cost').value)||0;
+  const cost=parseFloat(costVal)||0;
   const tech=document.getElementById('lm-tech').value.trim();
   const kmAfter=Math.max(kmRaw,bus.km);
   const prevKm=bus.km;
@@ -927,13 +942,17 @@ async function doSaveTire(busId){
   const bus=ST.buses.find(b=>b.id===busId);
   if(!bus) return;
   const date=document.getElementById('tm-date').value;
-  if(!date){ ST.modalErr='La fecha es obligatoria'; render(); return; }
+  if(!date){ ST.modalErr='La fecha es obligatoria.'; render(); return; }
   const pos=document.getElementById('tm-pos').value;
   const event=document.getElementById('tm-event').value;
-  const kmRaw=parseInt(document.getElementById('tm-km').value)||0;
+  const kmVal=document.getElementById('tm-km').value;
+  const costVal=document.getElementById('tm-cost').value;
+  if(kmVal===''){ ST.modalErr='El odómetro es obligatorio.'; render(); return; }
+  if(costVal===''){ ST.modalErr='El costo es obligatorio.'; render(); return; }
+  const kmRaw=parseInt(kmVal)||0;
   const brand=document.getElementById('tm-brand').value.trim();
   const cond=document.getElementById('tm-cond').value;
-  const cost=parseFloat(document.getElementById('tm-cost').value)||0;
+  const cost=parseFloat(costVal)||0;
   const notes=document.getElementById('tm-notes').value.trim();
   const kmAfter=Math.max(kmRaw,bus.km);
   // snapshot for rollback
@@ -1034,10 +1053,14 @@ async function doSaveServiceLog(busId){
   const bus=ST.buses.find(b=>b.id===busId);
   if(!bus) return;
   const date=document.getElementById('sv-date').value;
-  if(!date){ ST.modalErr='La fecha es obligatoria'; render(); return; }
-  const kmRaw=parseInt(document.getElementById('sv-km').value)||0;
+  if(!date){ ST.modalErr='La fecha es obligatoria.'; render(); return; }
+  const kmVal=document.getElementById('sv-km').value;
+  const costVal=document.getElementById('sv-cost').value;
+  if(kmVal===''){ ST.modalErr='El odómetro es obligatorio.'; render(); return; }
+  if(costVal===''){ ST.modalErr='El costo es obligatorio.'; render(); return; }
+  const kmRaw=parseInt(kmVal)||0;
   const brand=document.getElementById('sv-brand').value.trim();
-  const cost=parseFloat(document.getElementById('sv-cost').value)||0;
+  const cost=parseFloat(costVal)||0;
   const extras=[
     ['sv-cb-fuel','Filtro de combustible'],
     ['sv-cb-air','Filtro de aire'],
@@ -1130,7 +1153,7 @@ function exportCSV(){
   const rows=applyReportFilters();
   if(!rows.length) return;
   const typeLabels={...LOG_TYPES,tire:'Llanta'};
-  const headers=['Fecha','Unidad','Ciudad','Cliente','Tipo','Descripcion','KM','Tecnico','Costo MXN'];
+  const headers=['Fecha','Unidad','Ciudad','Cliente','Tipo','Subtipo','Descripcion','KM','Tecnico','Costo MXN'];
   const lines=[headers.join(',')];
   rows.forEach(l=>{
     const bus=ST.buses.find(b=>b.id===(l.bus_id||l.busId));
@@ -1140,6 +1163,7 @@ function exportCSV(){
       CITIES[bus?.city]?.name||bus?.city||'',
       bus?.client||'',
       typeLabels[l.type]||l.type,
+      `"${getSubtipo(l).replace(/"/g,'""')}"`,
       `"${(l.description||l.desc||'').replace(/"/g,'""')}"`,
       l.km_after||l.kmAfter||'',
       `"${(l.technician||l.tech||'').replace(/"/g,'""')}"`,
