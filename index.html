@@ -105,10 +105,6 @@ label{font-size:12px;color:var(--text2);display:block;margin-bottom:4px}
 .login-box{width:100%;max-width:360px}
 .login-box h1{font-size:22px;font-weight:700;margin-bottom:4px}
 .login-box .sub{font-size:13px;color:var(--text2);margin-bottom:1.75rem;line-height:1.5}
-.city-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:1rem}
-.city-opt{border:0.5px solid var(--border);border-radius:var(--radius);padding:9px 12px;cursor:pointer;text-align:left;background:var(--bg);font-size:13px;color:var(--text);font-weight:500}
-.city-opt:hover{background:var(--bg2)}
-.city-opt.sel{border-color:var(--blue);background:var(--blue-bg);color:var(--blue-dark)}
 .err{font-size:12px;color:var(--red-dark);margin-top:6px;min-height:18px}
 .spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;margin-right:6px}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -173,7 +169,7 @@ let sb = null;
 let ST = {
   auth:null, busId:null, tab:'log', selTire:null,
   modal:null, logFilter:'all', tirePrePos:null, tirePreEvent:null,
-  loginCity:null, loginErr:'', saving:false,
+  loginErr:'', saving:false,
   adminFilter:'all', buses:[], logs:[], toast:null, toastType:null, modalErr:'',
   view:'fleet', rptBus:'all', rptType:'all', rptFrom:'', rptTo:''
 };
@@ -264,30 +260,30 @@ function showToast(msg,type='success'){ ST.toast=msg; ST.toastType=type; render(
 
 function renderLogin(){
   return `<div class="login-wrap"><div class="login-box">
-    <h1>Grupo ATE</h1>
-    <p class="sub">Control de flota · Selecciona tu ciudad e ingresa tu contraseña</p>
-    <div class="city-grid">${Object.entries(CITIES).map(([k,v])=>
-      `<button class="city-opt${ST.loginCity===k?' sel':''}" onclick="ST.loginCity='${k}';ST.loginErr='';render()">${v.name}</button>`).join('')}
+    <div style="margin-bottom:1.75rem">
+      <h1>Grupo ATE</h1>
+      <p class="sub">Control de Flota · Ingresa con tu correo y contraseña</p>
     </div>
-    ${ST.loginCity?`
-      <div class="form-row"><label>Contraseña</label>
-        <input type="password" id="pw" placeholder="••••••••" autofocus>
-      </div>
-      <div class="err">${ST.loginErr}</div>
-      <button class="btn primary full" onclick="doLogin()" style="margin-top:4px" ${ST.saving?'disabled':''}>
-        ${ST.saving?'<span class="spinner"></span>Verificando...':'Entrar'}
-      </button>
-    `:''}
+    <div class="form-row"><label>Correo electrónico</label>
+      <input type="email" id="login-email" placeholder="correo@autobusesate.com" autocomplete="username" autofocus>
+    </div>
+    <div class="form-row"><label>Contraseña</label>
+      <input type="password" id="login-pw" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <div class="err">${ST.loginErr}</div>
+    <button class="btn primary full" onclick="doLogin()" style="margin-top:4px" ${ST.saving?'disabled':''}>
+      ${ST.saving?'<span class="spinner"></span>Verificando...':'Entrar'}
+    </button>
   </div></div>`;
 }
 
 async function doLogin(){
-  const pw=document.getElementById('pw')?.value||'';
-  if(!ST.loginCity||!pw) return;
+  const email=(document.getElementById('login-email')?.value||'').trim();
+  const pw=document.getElementById('login-pw')?.value||'';
+  if(!email||!pw) return;
   ST.saving=true; ST.loginErr=''; render();
-  const email=`${ST.loginCity}@autobusesate.com`;
   const {data,error}=await sb.auth.signInWithPassword({email,password:pw});
-  if(error){ ST.loginErr='Contraseña incorrecta'; ST.saving=false; render(); return; }
+  if(error){ ST.loginErr='Correo o contraseña incorrectos'; ST.saving=false; render(); return; }
   const city=data.user?.user_metadata?.city;
   if(!city){ ST.loginErr='Usuario sin ciudad asignada. Contacta al administrador.'; ST.saving=false; render(); return; }
   ST.auth=city; ST.saving=false;
