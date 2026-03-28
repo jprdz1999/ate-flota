@@ -177,7 +177,9 @@ let ST = {
 // ─── INIT ────────────────────────────────────────────────────────────────────
 async function init(){
   try {
-    sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { storage: window.sessionStorage, persistSession: true }
+    });
     const { data:{ session } } = await sb.auth.getSession();
     if(session){
       const city = session.user?.user_metadata?.city;
