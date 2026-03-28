@@ -126,6 +126,9 @@ label{font-size:12px;color:var(--text2);display:block;margin-bottom:4px}
 .rpt-table td{padding:9px 10px;border-bottom:0.5px solid var(--border);vertical-align:top}
 .rpt-table tbody tr:last-child td{border-bottom:none}
 .rpt-table tbody tr:hover td{background:var(--bg2)}
+.svc-dot{width:7px;height:7px;border-radius:50%;background:var(--amber);flex-shrink:0;display:inline-block}
+.alert-bar.red{background:var(--red-bg);border-color:var(--red);color:var(--red-dark)}
+.alert-bar.green{background:var(--green-bg);border-color:var(--green);color:var(--green-dark)}
 </style>
 </head>
 <body>
@@ -234,6 +237,16 @@ function condFill(c){ return c==='good'?'#639922':c==='mid'?'#EF9F27':c==='worn'
 function condPill(c){ return c==='good'?'pill-good':c==='mid'?'pill-mid':c==='worn'?'pill-worn':'pill-empty'; }
 function condLabel(c){ return c==='good'?'Buena':c==='mid'?'Desgaste medio':c==='worn'?'Desgaste alto':'Sin datos'; }
 
+function getServiceAlert(bus){
+  const svcLogs=busLogs(bus.id).filter(l=>l.type==='svc');
+  if(!svcLogs.length) return {status:'none',lastLog:null};
+  const last=svcLogs[0];
+  const interval=bus.oil_interval||10000;
+  const kmSince=bus.km-(last.km_after||0);
+  if(kmSince>=interval) return {status:'overdue',km:kmSince,overdueBy:kmSince-interval,lastLog:last};
+  return {status:'ok',km:kmSince,remaining:interval-kmSince,lastLog:last};
+}
+
 function getAlerts(bus){
   const alerts=[], logs=busLogs(bus.id);
   const lastOil=logs.find(l=>l.type==='oil');
@@ -323,8 +336,9 @@ function renderApp(){
     h+=`<div class="fleet-grid">`;
     shown.forEach(b=>{
       const al=getAlerts(b);
+      const svcAl=getServiceAlert(b);
       h+=`<div class="bus-chip${ST.busId===b.id?' active':''}" onclick="selectBus('${b.id}')">
-        <div class="cn">${b.name}${al.length?`<span class="alert-dot"></span>`:''}
+        <div class="cn">${b.name}${al.length?`<span class="alert-dot"></span>`:''}${svcAl.status==='overdue'?`<span class="svc-dot"></span>`:''}
         </div><div class="cm">${b.client}${isAdmin?' · '+CITIES[b.city]?.name:''}<br>${fmt(b.km)} km</div>
       </div>`;
     });
@@ -338,10 +352,12 @@ function renderApp(){
         <button class="tab${ST.tab==='log'?' active':''}" onclick="ST.tab='log';render()">Historial</button>
         <button class="tab${ST.tab==='tires'?' active':''}" onclick="ST.tab='tires';render()">Llantas</button>
         <button class="tab${ST.tab==='stats'?' active':''}" onclick="ST.tab='stats';render()">Resumen</button>
+        <button class="tab${ST.tab==='service'?' active':''}" onclick="ST.tab='service';ST.modalErr='';render()">Servicio</button>
       </div>`;
-      if(ST.tab==='log')   h+=renderLog(bus);
-      if(ST.tab==='tires') h+=renderTires(bus);
-      if(ST.tab==='stats') h+=renderStats(bus);
+      if(ST.tab==='log')     h+=renderLog(bus);
+      if(ST.tab==='tires')   h+=renderTires(bus);
+      if(ST.tab==='stats')   h+=renderStats(bus);
+      if(ST.tab==='service') h+=renderService(bus);
     }
   }
 
@@ -611,6 +627,82 @@ function renderStats(bus){
   return h;
 }
 
+function renderService(bus){
+  const svcLogs=busLogs(bus.id).filter(l=>l.type==='svc');
+  const al=getServiceAlert(bus);
+  const interval=bus.oil_interval||10000;
+
+  let h='';
+  if(al.status==='overdue'){
+    h+=`<div class="alert-bar red">⚠ Cambio de aceite vencido — ${fmt(al.overdueBy)} km de retraso · Último cambio a ${fmt(al.lastLog.km_after||0)} km</div>`;
+  } else if(al.status==='ok'){
+    h+=`<div class="alert-bar green">✓ Próximo cambio en ${fmt(al.remaining)} km · Último a ${fmt(al.lastLog.km_after||0)} km el ${al.lastLog.date}</div>`;
+  } else {
+    h+=`<div class="alert-bar">Sin registros de cambio de aceite en esta unidad</div>`;
+  }
+
+  h+=`<div class="two-col"><div>`;
+
+  h+=`<div class="card">
+    <div class="section-hdr" style="margin-bottom:0.75rem"><h4>Registrar cambio de aceite</h4></div>
+    <div class="fg2">
+      <div class="form-row"><label>Fecha</label><input type="date" id="sv-date" value="${today()}"></div>
+      <div class="form-row"><label>KM actuales (odómetro)</label><input type="number" id="sv-km" value="${bus.km}"></div>
+    </div>
+    <div class="fg2">
+      <div class="form-row"><label>Aceite / Marca</label><input type="text" id="sv-brand" placeholder="Ej: Mobil 1 5W-30"></div>
+      <div class="form-row"><label>Costo ($)</label><input type="number" id="sv-cost" value="0" min="0"></div>
+    </div>
+    ${ST.modalErr?`<div class="modal-err">${ST.modalErr}</div>`:''}
+    <div style="display:flex;justify-content:flex-end;margin-top:0.75rem">
+      <button class="btn primary" onclick="doSaveServiceLog('${bus.id}')" ${ST.saving?'disabled':''}>
+        ${ST.saving?'<span class="spinner"></span>Guardando...':'+ Registrar'}
+      </button>
+    </div>
+  </div>`;
+
+  if(svcLogs.length){
+    h+=`<div class="card">`;
+    svcLogs.forEach(l=>{
+      h+=`<div class="log-item">
+        <div class="dot" style="background:var(--green)"></div>
+        <div>
+          <div class="li-title">${l.description||'Cambio de aceite'}</div>
+          <div class="li-meta">${l.date} &nbsp;·&nbsp; ${fmt(l.km_after||0)} km</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
+          <span class="li-cost${l.cost?'':' zero'}">${l.cost?mxn(l.cost):'—'}</span>
+          <button class="btn sm ghost" onclick="doDelServiceLog('${l.id}')">✕</button>
+        </div>
+      </div>`;
+    });
+    h+=`</div>`;
+  } else {
+    h+=`<div class="empty-state">Sin registros de cambio de aceite</div>`;
+  }
+
+  h+=`</div><div><div class="card">
+    <h4 style="margin-bottom:0.75rem">Estado de servicio</h4>
+    <div class="stat-row"><span class="stat-lbl">Odómetro actual</span><span>${fmt(bus.km)} km</span></div>
+    ${al.lastLog?`
+    <div class="stat-row"><span class="stat-lbl">Último cambio</span><span>${al.lastLog.date}</span></div>
+    <div class="stat-row"><span class="stat-lbl">KM en cambio</span><span>${fmt(al.lastLog.km_after||0)} km</span></div>
+    <div class="stat-row"><span class="stat-lbl">KM desde cambio</span>
+      <span style="font-weight:600;color:${al.status==='overdue'?'var(--red-dark)':'var(--green-dark)'}">${fmt(al.km)} km</span></div>
+    `:''}
+    <div class="stat-row"><span class="stat-lbl">Intervalo configurado</span><span>${fmt(interval)} km</span></div>
+    <div style="margin-top:0.75rem;padding-top:0.75rem;border-top:0.5px solid var(--border)">
+      <label>Cambiar intervalo (km)</label>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <input type="number" id="sv-interval" value="${interval}" min="1000" step="500" style="flex:1">
+        <button class="btn" onclick="doSaveOilInterval('${bus.id}')">Guardar</button>
+      </div>
+    </div>
+  </div></div></div>`;
+
+  return h;
+}
+
 function renderLogModal(bus){
   return `<div class="modal-wrap"><div class="modal">
     <h3>Nuevo registro — ${bus.name}</h3>
@@ -844,6 +936,52 @@ async function doDelBus(id){
   ST.busId=null; render();
   const {error}=await dbDeleteBus(id);
   if(error){ ST.buses=prevBuses; ST.logs=prevLogs; ST.busId=id; showToast('Error al eliminar. Intenta de nuevo.','error'); }
+}
+
+async function doSaveServiceLog(busId){
+  if(ST.saving) return;
+  const bus=ST.buses.find(b=>b.id===busId);
+  if(!bus) return;
+  const date=document.getElementById('sv-date').value;
+  if(!date){ ST.modalErr='La fecha es obligatoria'; render(); return; }
+  const kmRaw=parseInt(document.getElementById('sv-km').value)||0;
+  const brand=document.getElementById('sv-brand').value.trim();
+  const cost=parseFloat(document.getElementById('sv-cost').value)||0;
+  const kmAfter=Math.max(kmRaw,bus.km);
+  const prevKm=bus.km;
+  bus.km=kmAfter;
+  const desc=brand?`Cambio de aceite · ${brand}`:'Cambio de aceite';
+  const log={id:uid(),bus_id:busId,city:bus.city,type:'svc',date,description:desc,cost,km_after:kmAfter,ts:Date.now()};
+  ST.logs.unshift(log);
+  ST.saving=true; ST.modalErr=''; render();
+  const {error:e1}=await dbSaveBus(bus);
+  const {error:e2}=await dbSaveLog(log);
+  if(e1||e2){
+    bus.km=prevKm; ST.logs=ST.logs.filter(l=>l.id!==log.id);
+    ST.saving=false; ST.modalErr='Error al guardar. Intenta de nuevo.'; render(); return;
+  }
+  ST.saving=false; ST.modalErr=''; showToast('Cambio de aceite registrado');
+}
+
+async function doDelServiceLog(id){
+  if(!confirm('¿Eliminar este registro?')) return;
+  const prev=[...ST.logs];
+  ST.logs=ST.logs.filter(l=>l.id!==id);
+  render();
+  const {error}=await dbDeleteLog(id);
+  if(error){ ST.logs=prev; showToast('Error al eliminar. Intenta de nuevo.','error'); }
+}
+
+async function doSaveOilInterval(busId){
+  const bus=ST.buses.find(b=>b.id===busId);
+  if(!bus) return;
+  const val=parseInt(document.getElementById('sv-interval').value)||10000;
+  const prev=bus.oil_interval;
+  bus.oil_interval=Math.max(1000,val);
+  render();
+  const {error}=await dbSaveBus(bus);
+  if(error){ bus.oil_interval=prev; showToast('Error al guardar intervalo.','error'); render(); }
+  else showToast('Intervalo actualizado');
 }
 
 function exportCSV(){
