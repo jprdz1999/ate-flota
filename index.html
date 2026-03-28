@@ -342,6 +342,7 @@ function renderApp(){
   const isAdmin=ST.auth==='admin';
 
   let h=`<div class="nav">
+    <button class="btn sm ghost" onclick="ST.busId=null;ST.view='fleet';ST.modalErr='';render()" title="Inicio">⌂ Inicio</button>
     <span class="nav-brand">Grupo ATE — Flota</span>
     ${isAdmin?`<select style="width:auto" onchange="ST.adminFilter=this.value;ST.busId=null;render()">
       <option value="all">Todas las ciudades</option>
