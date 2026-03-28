@@ -591,9 +591,12 @@ function renderLog(bus){
   } else {
     filtered.forEach(l=>{
       const km=l.km_after||l.kmAfter;
+      const isCl=l.type==='checklist';
+      const title=isCl?'Checklist realizado':(l.description||l.desc||LOG_TYPES[l.type]);
+      const dotStyle=isCl?'background:var(--blue)':'';
       h+=`<div class="log-item">
-        <div class="dot d-${l.type}"></div>
-        <div><div class="li-title">${l.description||l.desc||LOG_TYPES[l.type]}</div>
+        <div class="dot d-${l.type}" style="${dotStyle}"></div>
+        <div><div class="li-title">${title}</div>
           <div class="li-meta">${l.date}${km?' &nbsp;·&nbsp; '+fmt(km)+' km':''}${l.technician||l.tech?' &nbsp;·&nbsp; '+(l.technician||l.tech):''}</div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
