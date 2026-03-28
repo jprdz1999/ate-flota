@@ -132,6 +132,25 @@ label{font-size:12px;color:var(--text2);display:block;margin-bottom:4px}
 .cb-item input[type=checkbox]{width:15px;height:15px;flex-shrink:0;accent-color:var(--blue);cursor:pointer}
 .alert-bar.red{background:var(--red-bg);border-color:var(--red);color:var(--red-dark)}
 .alert-bar.green{background:var(--green-bg);border-color:var(--green);color:var(--green-dark)}
+.status-bar{display:flex;gap:5px;margin:3px 0 2px;align-items:center}
+.ind{width:8px;height:8px;border-radius:50%;flex-shrink:0;display:inline-block}
+.ind-green{background:var(--green)}.ind-yellow{background:var(--amber)}.ind-red{background:var(--red)}
+.ind-gray{background:var(--text3)}.ind-white{background:var(--bg);border:0.5px solid var(--border2)}
+.cl-section{background:var(--bg2);border-radius:var(--radius);padding:10px 14px;margin-bottom:10px}
+.cl-sec-hdr{font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px}
+.cl-item{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:0.5px solid var(--border);gap:12px;font-size:13px}
+.cl-item:last-child{border-bottom:none}
+.cl-item-lbl{flex:1;color:var(--text);line-height:1.4}
+.cl-tg{display:flex;gap:3px;flex-shrink:0}
+.cl-btn{padding:3px 10px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text2);cursor:pointer;font-weight:600;min-width:34px;text-align:center}
+.cl-btn:hover{background:var(--bg3)}
+.cl-btn.ok{background:var(--green-bg);color:var(--green-dark);border-color:var(--green)}
+.cl-btn.bad{background:var(--red-bg);color:var(--red-dark);border-color:var(--red)}
+.cl-btn.na{background:var(--bg3);color:var(--text3);border-color:var(--border)}
+.cl-hist-item{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:0.5px solid var(--border)}
+.cl-hist-item:last-child{border-bottom:none}
+.issue-item{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:0.5px solid var(--border)}
+.issue-item:last-child{border-bottom:none}
 </style>
 </head>
 <body>
@@ -168,6 +187,12 @@ const REPAIR_TYPES = [
   {id:'otro',        lbl:'Otro'},
 ];
 const TIRE_EVENTS = {new:'Llanta nueva', rotate:'Rotación', recap:'Reencauche', retire:'Baja'};
+const CL_DOCS=['Licencia de Conducir','Póliza de Seguro','Tarjeta de Circulación','Placas','Extintor','Botiquín médico'];
+const CL_EXTERNO=['Parabrisas delantera','Parabrisas posterior','Limpia parabrisas','Espejos laterales','Libre de modificaciones/adornos'];
+const CL_CARROCERIA=['Daños en facia frontal','Daños en facia trasera','Daños carrocería lateral derecha','Daños carrocería lateral izquierdo','Ventanas lado derecho','Ventanas lado izquierdo'];
+const CL_LLANTAS=['Llanta #1','Llanta #2','Llanta #3','Llanta #4','Llanta #5','Llanta #6'];
+const CL_LUCES=['Bajas','Altas','Direccionales','Stops','Navegación laterales','Navegación traseras'];
+const CL_NIVELES=['Presión del aire (PSI)','Nivel de aceite','Nivel de adblue','Nivel hidráulico','Nivel anticongelante'];
 const POS_CFG = [
   {id:'FL', lbl:'Del\nIzq', x:26,y:46,w:22,h:42,spare:false},
   {id:'FR', lbl:'Del\nDer', x:192,y:46,w:22,h:42,spare:false},
@@ -188,7 +213,8 @@ let ST = {
   modal:null, logFilter:'all', tirePrePos:null, tirePreEvent:null,
   loginErr:'', saving:false,
   adminFilter:'all', buses:[], logs:[], toast:null, toastType:null, modalErr:'',
-  view:'fleet', rptBus:'all', rptType:'all', rptFrom:'', rptTo:''
+  view:'fleet', rptBus:'all', rptType:'all', rptFrom:'', rptTo:'',
+  clView:'history'
 };
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
@@ -283,6 +309,60 @@ function getSubtipo(log){
   return labels[log.type]||log.type||'—';
 }
 
+function parseChecklist(log){
+  try{ return JSON.parse((log.description||'').slice(6)); }catch(e){ return null; }
+}
+function getChecklistFailures(data){
+  const f=[];
+  Object.entries(data.docs||{}).forEach(([k,v])=>{ if(v===false) f.push(k); });
+  Object.entries(data.carroceria||{}).forEach(([k,v])=>{ if(v==='M') f.push(k); });
+  Object.entries(data.llantas||{}).forEach(([k,v])=>{ if(v==='M') f.push(k); });
+  Object.entries(data.niveles||{}).forEach(([k,v])=>{ if(v==='M') f.push(k); });
+  return f;
+}
+function getFleetIndicators(bus){
+  const svcAl=getServiceAlert(bus);
+  let oil,oilTip;
+  if(svcAl.status==='none'){ oil='red'; oilTip='Sin registro de aceite'; }
+  else if(svcAl.status==='overdue'){ oil='red'; oilTip=`Vencido ${fmt(svcAl.overdueBy)} km`; }
+  else if(svcAl.remaining<=1000){ oil='yellow'; oilTip=`${fmt(svcAl.remaining)} km al próximo cambio`; }
+  else { oil='green'; oilTip=`${fmt(svcAl.remaining)} km al próximo cambio`; }
+  const clLogs=busLogs(bus.id).filter(l=>l.type==='checklist');
+  let tire,tireTip;
+  if(!clLogs.length){ tire='gray'; tireTip='Sin inspección registrada'; }
+  else {
+    const last=clLogs[0];
+    const data=parseChecklist(last);
+    const days=Math.floor((Date.now()-new Date(last.date+'T12:00:00').getTime())/86400000);
+    const hasBadTire=data&&Object.values(data.llantas||{}).some(v=>v==='M');
+    if(hasBadTire){ tire='red'; tireTip='Llanta en mal estado'; }
+    else if(days>7){ tire='yellow'; tireTip=`Inspección hace ${days} días`; }
+    else { tire='green'; tireTip=`Insp. hace ${days} día${days===1?'':'s'}`; }
+  }
+  const open=(bus.open_issues||[]).filter(i=>!i.resolved);
+  return {oil,oilTip,tire,tireTip,issues:open.length?'red':'white',issuesTip:open.length?`${open.length} pendiente(s)`:'Sin pendientes'};
+}
+function clBoolRow(pfx,items){
+  return items.map((item,i)=>`<div class="cl-item"><span class="cl-item-lbl">${item}</span><div class="cl-tg" id="${pfx}-${i}"><button class="cl-btn ok" onclick="clToggle(this,'ok')">✓</button><button class="cl-btn" onclick="clToggle(this,'bad')">✗</button></div></div>`).join('');
+}
+function clBMNRow(pfx,items){
+  return items.map((item,i)=>`<div class="cl-item"><span class="cl-item-lbl">${item}</span><div class="cl-tg" id="${pfx}-${i}"><button class="cl-btn ok" onclick="clToggle(this,'ok')">B</button><button class="cl-btn" onclick="clToggle(this,'bad')">M</button><button class="cl-btn" onclick="clToggle(this,'na')">NA</button></div></div>`).join('');
+}
+function clToggle(btn,val){
+  btn.closest('.cl-tg').querySelectorAll('.cl-btn').forEach(b=>b.classList.remove('ok','bad','na'));
+  btn.classList.add(val);
+}
+function clReadBool(pfx,items){
+  const r={};
+  items.forEach((item,i)=>{ const g=document.getElementById(`${pfx}-${i}`); r[item]=g?!g.querySelector('.cl-btn.bad'):true; });
+  return r;
+}
+function clReadBMN(pfx,items){
+  const r={};
+  items.forEach((item,i)=>{ const g=document.getElementById(`${pfx}-${i}`); r[item]=g?.querySelector('.cl-btn.bad')?'M':g?.querySelector('.cl-btn.na')?'NA':'B'; });
+  return r;
+}
+
 function applyReportFilters(){
   let rows=[...ST.logs];
   if(ST.rptBus!=='all') rows=rows.filter(l=>(l.bus_id||l.busId)===ST.rptBus);
@@ -363,11 +443,15 @@ function renderApp(){
     const shown=isAdmin&&ST.adminFilter!=='all'?buses.filter(b=>b.city===ST.adminFilter):buses;
     h+=`<div class="fleet-grid">`;
     shown.forEach(b=>{
-      const al=getAlerts(b);
-      const svcAl=getServiceAlert(b);
+      const ind=getFleetIndicators(b);
       h+=`<div class="bus-chip${ST.busId===b.id?' active':''}" onclick="selectBus('${b.id}')">
-        <div class="cn">${b.name}${al.length?`<span class="alert-dot"></span>`:''}${svcAl.status==='overdue'?`<span class="svc-dot"></span>`:''}
-        </div><div class="cm">${b.client}${isAdmin?' · '+CITIES[b.city]?.name:''}<br>${fmt(b.km)} km</div>
+        <div class="cn">${b.name}</div>
+        <div class="status-bar">
+          <span class="ind ind-${ind.oil}" title="${ind.oilTip}"></span>
+          <span class="ind ind-${ind.tire}" title="${ind.tireTip}"></span>
+          <span class="ind ind-${ind.issues}" title="${ind.issuesTip}"></span>
+        </div>
+        <div class="cm">${b.client}${isAdmin?' · '+CITIES[b.city]?.name:''}<br>${fmt(b.km)} km</div>
       </div>`;
     });
     h+=`<div class="bus-chip chip-add" onclick="ST.modal='bus';render()">+ Nueva unidad</div></div>`;
@@ -381,13 +465,15 @@ function renderApp(){
         <button class="tab${ST.tab==='service'?' active':''}" onclick="ST.tab='service';ST.modalErr='';render()">Servicio</button>
         <button class="tab${ST.tab==='tires'?' active':''}" onclick="ST.tab='tires';render()">Llantas</button>
         <button class="tab${ST.tab==='repairs'?' active':''}" onclick="ST.tab='repairs';ST.modalErr='';render()">Reparaciones</button>
+        <button class="tab${ST.tab==='checklist'?' active':''}" onclick="ST.tab='checklist';ST.clView='history';ST.modalErr='';render()">Checklist</button>
         <button class="tab${ST.tab==='log'?' active':''}" onclick="ST.tab='log';render()">Historial</button>
         ${isAdmin?`<button class="tab${ST.tab==='stats'?' active':''}" onclick="ST.tab='stats';render()">Resumen</button>`:''}
       </div>`;
       if(ST.tab==='service') h+=renderService(bus);
       if(ST.tab==='tires')   h+=renderTires(bus);
-      if(ST.tab==='repairs') h+=renderRepairs(bus);
-      if(ST.tab==='log')     h+=renderLog(bus);
+      if(ST.tab==='repairs')   h+=renderRepairs(bus);
+      if(ST.tab==='checklist') h+=renderChecklist(bus);
+      if(ST.tab==='log')       h+=renderLog(bus);
       if(ST.tab==='stats' && isAdmin) h+=renderStats(bus);
     }
   }
@@ -811,6 +897,103 @@ function renderRepairs(bus){
   return h;
 }
 
+function renderChecklist(bus){
+  const clLogs=busLogs(bus.id).filter(l=>l.type==='checklist');
+  const openIssues=(bus.open_issues||[]).filter(i=>!i.resolved);
+  if(ST.clView==='form') return renderChecklistForm(bus);
+  let h='';
+  if(openIssues.length){
+    h+=`<div class="card" style="border-color:rgba(226,75,74,0.45);margin-bottom:10px">
+      <div class="section-hdr" style="margin-bottom:0.75rem"><h4 style="color:var(--red-dark)">⚠ Acciones pendientes — ${openIssues.length}</h4></div>`;
+    openIssues.forEach(iss=>{
+      h+=`<div class="issue-item">
+        <div style="flex:1"><div style="font-size:13px;color:var(--text);line-height:1.4">${iss.text}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Reportado: ${iss.date}</div></div>
+        <button class="btn sm" onclick="doResolveIssue('${bus.id}','${iss.id}')">Resolver ✓</button>
+      </div>`;
+    });
+    h+=`</div>`;
+  }
+  h+=`<div class="card"><div class="section-hdr" style="margin-bottom:0.75rem">
+    <h4>Historial de inspecciones</h4>
+    <button class="btn sm primary" onclick="ST.clView='form';ST.modalErr='';render()">+ Nueva inspección</button>
+  </div>`;
+  if(!clLogs.length){
+    h+=`<div class="empty-state">Sin inspecciones registradas</div>`;
+  } else {
+    clLogs.forEach(l=>{
+      const data=parseChecklist(l);
+      const passed=data?.passed!==false;
+      const failures=data?getChecklistFailures(data):[];
+      h+=`<div class="cl-hist-item">
+        <div style="width:8px;height:8px;border-radius:50%;background:${passed?'var(--green)':'var(--red)'};flex-shrink:0;margin-top:3px"></div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:500;font-size:13px">${l.date}${data?.hora?' &nbsp;·&nbsp; '+data.hora:''}</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:1px">${data?.conductor||'—'}${l.km_after?' &nbsp;·&nbsp; '+fmt(l.km_after)+' km':''}</div>
+          ${failures.length?`<div style="font-size:11px;color:var(--red-dark);margin-top:2px">${failures.slice(0,3).join(' · ')}${failures.length>3?' +'+( failures.length-3)+' más':''}</div>`:''}
+        </div>
+        <span class="pill ${passed?'pill-good':'pill-worn'}" style="font-size:10px;flex-shrink:0">${passed?'OK':'Observ.'}</span>
+      </div>`;
+    });
+  }
+  h+=`</div>`;
+  return h;
+}
+
+function renderChecklistForm(bus){
+  return `<div class="card">
+    <div class="section-hdr" style="margin-bottom:1rem">
+      <h4>Nueva inspección — ${bus.name}</h4>
+      <button class="btn sm ghost" onclick="ST.clView='history';ST.modalErr='';render()">← Cancelar</button>
+    </div>
+    <div class="fg2">
+      <div class="form-row"><label>Conductor/Operador *</label><input type="text" id="cl-conductor" placeholder="Nombre del conductor"></div>
+      <div class="form-row"><label>Cliente/Planta</label><input type="text" id="cl-cliente" placeholder="Cliente o planta" value="${bus.client||''}"></div>
+    </div>
+    <div class="fg3">
+      <div class="form-row"><label>Fecha *</label><input type="date" id="cl-fecha" value="${today()}"></div>
+      <div class="form-row"><label>Hora de inspección</label><input type="time" id="cl-hora"></div>
+      <div class="form-row"><label>Kilometraje *</label><input type="number" id="cl-km" value="${bus.km}" min="0"></div>
+    </div>
+    <div class="form-row" style="max-width:260px"><label>Carga de combustible (%)</label>
+      <input type="number" id="cl-combustible" min="0" max="100" placeholder="0–100"></div>
+
+    <div class="cl-section"><div class="cl-sec-hdr">Documentación</div>${clBoolRow('cl-docs',CL_DOCS)}</div>
+    <div class="cl-section"><div class="cl-sec-hdr">Parte Externa</div>${clBoolRow('cl-externo',CL_EXTERNO)}</div>
+    <div class="cl-section">
+      <div class="cl-sec-hdr">Carrocería <span style="font-size:10px;font-weight:400;text-transform:none;letter-spacing:0">B = Bueno &nbsp; M = Malo &nbsp; NA = No aplica</span></div>
+      ${clBMNRow('cl-carroceria',CL_CARROCERIA)}
+    </div>
+    <div class="cl-section">
+      <div class="cl-sec-hdr">Estado de Llantas <span style="font-size:10px;font-weight:400;text-transform:none;letter-spacing:0">B = Bueno &nbsp; M = Malo &nbsp; NA = No aplica</span></div>
+      ${clBMNRow('cl-llantas',CL_LLANTAS)}
+    </div>
+    <div class="cl-section"><div class="cl-sec-hdr">Luces</div>${clBoolRow('cl-luces',CL_LUCES)}</div>
+    <div class="cl-section">
+      <div class="cl-sec-hdr">Niveles <span style="font-size:10px;font-weight:400;text-transform:none;letter-spacing:0">B = Bueno &nbsp; M = Malo &nbsp; NA = No aplica</span></div>
+      ${clBMNRow('cl-niveles',CL_NIVELES)}
+    </div>
+
+    <div class="form-row"><label>Otras deficiencias o anomalías</label>
+      <textarea id="cl-anomalias" rows="2" placeholder="Describir cualquier anomalía no cubierta arriba…"></textarea></div>
+    <div class="form-row"><label>Reparaciones o acciones requeridas</label>
+      <textarea id="cl-reparaciones" rows="2" placeholder="Listar trabajos pendientes — se agregarán como acciones a resolver…"></textarea></div>
+
+    <div class="fg2" style="margin-top:4px">
+      <div class="form-row"><label>Nombre del operador</label><input type="text" id="cl-op-name" placeholder="Nombre completo"></div>
+      <div class="form-row"><label>Nombre del coordinador</label><input type="text" id="cl-coord" placeholder="Nombre completo"></div>
+    </div>
+
+    <div id="cl-form-err" class="modal-err" style="display:none;margin-top:8px"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:1rem">
+      <button class="btn ghost" onclick="ST.clView='history';ST.modalErr='';render()">Cancelar</button>
+      <button class="btn primary" onclick="doSaveChecklist('${bus.id}')" ${ST.saving?'disabled':''}>
+        ${ST.saving?'<span class="spinner"></span>Guardando...':'Guardar inspección'}
+      </button>
+    </div>
+  </div>`;
+}
+
 function renderLogModal(bus){
   return `<div class="modal-wrap"><div class="modal">
     <h3>Nuevo registro — ${bus.name}</h3>
@@ -909,7 +1092,7 @@ function renderBusModal(){
 }
 
 // ─── ACTIONS ─────────────────────────────────────────────────────────────────
-function selectBus(id){ ST.busId=id; ST.selTire=null; ST.tab='log'; render(); }
+function selectBus(id){ ST.busId=id; ST.selTire=null; ST.tab='log'; ST.clView='history'; render(); }
 function openTireAt(pos){ ST.tirePrePos=pos; ST.tirePreEvent='new'; ST.modal='tire'; render(); }
 function openTireAction(pos,event){ ST.tirePrePos=pos; ST.tirePreEvent=event; ST.modal='tire'; render(); }
 
@@ -1153,6 +1336,75 @@ async function doDelRepairLog(id){
   render();
   const {error}=await dbDeleteLog(id);
   if(error){ ST.logs=prev; showToast('Error al eliminar. Intenta de nuevo.','error'); }
+}
+
+function showClErr(msg){ const el=document.getElementById('cl-form-err'); if(el){ el.textContent=msg; el.style.display=msg?'block':'none'; } }
+
+async function doSaveChecklist(busId){
+  if(ST.saving) return;
+  const bus=ST.buses.find(b=>b.id===busId);
+  if(!bus) return;
+  const conductor=(document.getElementById('cl-conductor')?.value||'').trim();
+  const fecha=document.getElementById('cl-fecha')?.value;
+  const kmVal=document.getElementById('cl-km')?.value;
+  if(!conductor){ showClErr('El conductor/operador es obligatorio.'); return; }
+  if(!fecha){ showClErr('La fecha es obligatoria.'); return; }
+  if(kmVal===''){ showClErr('El kilometraje es obligatorio.'); return; }
+  showClErr('');
+  const kmAfter=Math.max(parseInt(kmVal)||0,bus.km);
+  const data={
+    conductor,
+    cliente:(document.getElementById('cl-cliente')?.value||'').trim(),
+    hora:document.getElementById('cl-hora')?.value||'',
+    combustible:parseFloat(document.getElementById('cl-combustible')?.value)||0,
+    docs:clReadBool('cl-docs',CL_DOCS),
+    externo:clReadBool('cl-externo',CL_EXTERNO),
+    carroceria:clReadBMN('cl-carroceria',CL_CARROCERIA),
+    llantas:clReadBMN('cl-llantas',CL_LLANTAS),
+    luces:clReadBool('cl-luces',CL_LUCES),
+    niveles:clReadBMN('cl-niveles',CL_NIVELES),
+    anomalias:(document.getElementById('cl-anomalias')?.value||'').trim(),
+    reparaciones:(document.getElementById('cl-reparaciones')?.value||'').trim(),
+    operador:(document.getElementById('cl-op-name')?.value||'').trim(),
+    coordinador:(document.getElementById('cl-coord')?.value||'').trim(),
+  };
+  data.passed=!(
+    Object.values(data.docs).some(v=>v===false)||
+    Object.values(data.carroceria).some(v=>v==='M')||
+    Object.values(data.llantas).some(v=>v==='M')||
+    Object.values(data.niveles).some(v=>v==='M')
+  );
+  const prevKm=bus.km;
+  bus.km=kmAfter;
+  const prevIssues=JSON.parse(JSON.stringify(bus.open_issues||[]));
+  if(data.reparaciones){
+    if(!bus.open_issues) bus.open_issues=[];
+    bus.open_issues.push({id:uid(),text:data.reparaciones,date:fecha,resolved:false});
+  }
+  const log={id:uid(),bus_id:busId,city:bus.city,type:'checklist',date:fecha,description:'__CL__'+JSON.stringify(data),cost:0,km_after:kmAfter,ts:Date.now()};
+  ST.logs.unshift(log);
+  ST.saving=true; render();
+  const {error:e1}=await dbSaveBus(bus);
+  const {error:e2}=await dbSaveLog(log);
+  if(e1||e2){
+    bus.km=prevKm; bus.open_issues=prevIssues; ST.logs=ST.logs.filter(l=>l.id!==log.id);
+    ST.saving=false; ST.clView='form'; render();
+    showClErr('Error al guardar. Intenta de nuevo.'); return;
+  }
+  ST.saving=false; ST.clView='history';
+  showToast(`Inspección ${data.passed?'aprobada ✓':'con observaciones'} guardada`);
+}
+
+async function doResolveIssue(busId,issueId){
+  const bus=ST.buses.find(b=>b.id===busId);
+  if(!bus) return;
+  const iss=(bus.open_issues||[]).find(i=>i.id===issueId);
+  if(!iss||iss.resolved) return;
+  iss.resolved=true;
+  render();
+  const {error}=await dbSaveBus(bus);
+  if(error){ iss.resolved=false; showToast('Error al actualizar. Intenta de nuevo.','error'); render(); }
+  else showToast('Acción resuelta');
 }
 
 function exportCSV(){
