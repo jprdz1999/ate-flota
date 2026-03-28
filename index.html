@@ -127,6 +127,9 @@ label{font-size:12px;color:var(--text2);display:block;margin-bottom:4px}
 .rpt-table tbody tr:last-child td{border-bottom:none}
 .rpt-table tbody tr:hover td{background:var(--bg2)}
 .svc-dot{width:7px;height:7px;border-radius:50%;background:var(--amber);flex-shrink:0;display:inline-block}
+.cb-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;margin-top:2px}
+.cb-item{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--text);cursor:pointer;user-select:none}
+.cb-item input[type=checkbox]{width:15px;height:15px;flex-shrink:0;accent-color:var(--blue);cursor:pointer}
 .alert-bar.red{background:var(--red-bg);border-color:var(--red);color:var(--red-dark)}
 .alert-bar.green{background:var(--green-bg);border-color:var(--green);color:var(--green-dark)}
 </style>
@@ -653,6 +656,16 @@ function renderService(bus){
       <div class="form-row"><label>Aceite / Marca</label><input type="text" id="sv-brand" placeholder="Ej: Mobil 1 5W-30"></div>
       <div class="form-row"><label>Costo ($)</label><input type="number" id="sv-cost" value="0" min="0"></div>
     </div>
+    <div class="form-row" style="margin-top:4px">
+      <label style="margin-bottom:6px">También se cambió</label>
+      <div class="cb-grid">
+        <label class="cb-item"><input type="checkbox" id="sv-cb-fuel"> Filtro de combustible</label>
+        <label class="cb-item"><input type="checkbox" id="sv-cb-air"> Filtro de aire</label>
+        <label class="cb-item"><input type="checkbox" id="sv-cb-sec"> Filtro secundario</label>
+        <label class="cb-item"><input type="checkbox" id="sv-cb-oilf"> Filtro de aceite</label>
+        <label class="cb-item"><input type="checkbox" id="sv-cb-spark"> Bujías</label>
+      </div>
+    </div>
     ${ST.modalErr?`<div class="modal-err">${ST.modalErr}</div>`:''}
     <div style="display:flex;justify-content:flex-end;margin-top:0.75rem">
       <button class="btn primary" onclick="doSaveServiceLog('${bus.id}')" ${ST.saving?'disabled':''}>
@@ -947,10 +960,20 @@ async function doSaveServiceLog(busId){
   const kmRaw=parseInt(document.getElementById('sv-km').value)||0;
   const brand=document.getElementById('sv-brand').value.trim();
   const cost=parseFloat(document.getElementById('sv-cost').value)||0;
+  const extras=[
+    ['sv-cb-fuel','Filtro de combustible'],
+    ['sv-cb-air','Filtro de aire'],
+    ['sv-cb-sec','Filtro secundario'],
+    ['sv-cb-oilf','Filtro de aceite'],
+    ['sv-cb-spark','Bujías']
+  ].filter(([id])=>document.getElementById(id)?.checked).map(([,lbl])=>lbl);
   const kmAfter=Math.max(kmRaw,bus.km);
   const prevKm=bus.km;
   bus.km=kmAfter;
-  const desc=brand?`Cambio de aceite · ${brand}`:'Cambio de aceite';
+  const parts=['Cambio de aceite'];
+  if(brand) parts.push(brand);
+  if(extras.length) parts.push(extras.join(', '));
+  const desc=parts.join(' · ');
   const log={id:uid(),bus_id:busId,city:bus.city,type:'svc',date,description:desc,cost,km_after:kmAfter,ts:Date.now()};
   ST.logs.unshift(log);
   ST.saving=true; ST.modalErr=''; render();
