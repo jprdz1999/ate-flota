@@ -251,11 +251,13 @@ function condFill(c){ return c==='good'?'#639922':c==='mid'?'#EF9F27':c==='worn'
 function condPill(c){ return c==='good'?'pill-good':c==='mid'?'pill-mid':c==='worn'?'pill-worn':'pill-empty'; }
 function condLabel(c){ return c==='good'?'Buena':c==='mid'?'Desgaste medio':c==='worn'?'Desgaste alto':'Sin datos'; }
 
+function oilInterval(bus){ return bus.oil_interval||(bus.type==='bus'?30000:10000); }
+
 function getServiceAlert(bus){
   const svcLogs=busLogs(bus.id).filter(l=>l.type==='svc');
   if(!svcLogs.length) return {status:'none',lastLog:null};
   const last=svcLogs[0];
-  const interval=bus.oil_interval||10000;
+  const interval=oilInterval(bus);
   const kmSince=bus.km-(last.km_after||0);
   if(kmSince>=interval) return {status:'overdue',km:kmSince,overdueBy:kmSince-interval,lastLog:last};
   return {status:'ok',km:kmSince,remaining:interval-kmSince,lastLog:last};
@@ -263,9 +265,11 @@ function getServiceAlert(bus){
 
 function getAlerts(bus){
   const alerts=[], logs=busLogs(bus.id);
-  const lastOil=logs.find(l=>l.type==='oil');
+  const interval=oilInterval(bus);
+  const warn=Math.round(interval*0.9);
+  const lastOil=logs.find(l=>l.type==='svc'||l.type==='oil');
   if(!lastOil) alerts.push('Sin aceite registrado');
-  else { const km=bus.km-(lastOil.km_after||lastOil.kmAfter||0); if(km>=5000) alerts.push(`Aceite: ${fmt(km)} km`); else if(km>=4000) alerts.push(`Aceite próximo: ${fmt(km)} km`); }
+  else { const km=bus.km-(lastOil.km_after||lastOil.kmAfter||0); if(km>=interval) alerts.push(`Aceite: ${fmt(km)} km`); else if(km>=warn) alerts.push(`Aceite próximo: ${fmt(km)} km`); }
   Object.entries(bus.tires||{}).forEach(([pos,t])=>{ if(!t) return; const km=tireKM(t,bus.km); if(km>=70000) alerts.push(`${POS_NAMES[pos]}: ${fmt(km)} km`); });
   return alerts;
 }
@@ -476,16 +480,17 @@ function renderLog(bus){
   const logs=busLogs(bus.id);
   const filtered=ST.logFilter==='all'?logs:logs.filter(l=>l.type===ST.logFilter);
   const total=logs.reduce((s,l)=>s+(l.cost||0),0);
-  const lastOil=logs.find(l=>l.type==='oil');
+  const lastOil=logs.find(l=>l.type==='svc'||l.type==='oil');
   const kmOil=lastOil?bus.km-(lastOil.km_after||lastOil.kmAfter||0):null;
+  const oilInt=oilInterval(bus), oilWarn=Math.round(oilInt*0.9);
 
   const isAdmin=ST.auth==='admin';
   let h=`<div class="two-col"><div>
   <div class="kpi-row"${!isAdmin?' style="grid-template-columns:repeat(2,1fr)"':''}>
     <div class="kpi"><div class="kl">Odómetro</div><div class="kv">${fmt(bus.km)}</div><div class="ks">km totales</div></div>
     <div class="kpi"><div class="kl">Desde último aceite</div>
-      <div class="kv${kmOil===null?'':kmOil>=5000?' alert':kmOil>=4000?' warn':''}">${kmOil!==null?fmt(kmOil):'—'}</div>
-      <div class="ks">km${kmOil!==null?(kmOil>=5000?' ⚠ VENCIDO':kmOil>=4000?' próximo a vencer':''):''}</div></div>
+      <div class="kv${kmOil===null?'':kmOil>=oilInt?' alert':kmOil>=oilWarn?' warn':''}">${kmOil!==null?fmt(kmOil):'—'}</div>
+      <div class="ks">km${kmOil!==null?(kmOil>=oilInt?' ⚠ VENCIDO':kmOil>=oilWarn?' próximo a vencer':''):''}</div></div>
     ${isAdmin?`<div class="kpi"><div class="kl">Gasto total</div><div class="kv">${mxn(total)}</div><div class="ks">registrado</div></div>`:''}
   </div>
   <div class="card"><div class="section-hdr">
@@ -660,7 +665,7 @@ function renderStats(bus){
 function renderService(bus){
   const svcLogs=busLogs(bus.id).filter(l=>l.type==='svc');
   const al=getServiceAlert(bus);
-  const interval=bus.oil_interval||10000;
+  const interval=oilInterval(bus);
 
   let h='';
   if(al.status==='overdue'){
