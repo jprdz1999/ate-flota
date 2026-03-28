@@ -156,6 +156,17 @@ const CITIES = {
 
 const CLIENTS = ['Bimbo','Barcel','Oxxo','Maersk','Sensata','Dreams Jade','Bachoco','Otro'];
 const LOG_TYPES = {oil:'Aceite / Preventivo', repair:'Correctivo', km:'Solo KM'};
+const REPAIR_TYPES = [
+  {id:'compresor',   lbl:'Compresor'},
+  {id:'electrico',   lbl:'Eléctrico'},
+  {id:'frenos',      lbl:'Frenos'},
+  {id:'mangueras',   lbl:'Mangueras/Conexiones'},
+  {id:'motor',       lbl:'Motor'},
+  {id:'muelles',     lbl:'Muelles/Amortiguadores'},
+  {id:'enfriamiento',lbl:'Sistema de enfriamiento'},
+  {id:'transmision', lbl:'Transmisión'},
+  {id:'otro',        lbl:'Otro'},
+];
 const TIRE_EVENTS = {new:'Llanta nueva', rotate:'Rotación', recap:'Reencauche', retire:'Baja'};
 const POS_CFG = [
   {id:'FL', lbl:'Del\nIzq', x:26,y:46,w:22,h:42,spare:false},
@@ -355,11 +366,13 @@ function renderApp(){
       h+=`<div class="tab-row">
         <button class="tab${ST.tab==='service'?' active':''}" onclick="ST.tab='service';ST.modalErr='';render()">Servicio</button>
         <button class="tab${ST.tab==='tires'?' active':''}" onclick="ST.tab='tires';render()">Llantas</button>
+        <button class="tab${ST.tab==='repairs'?' active':''}" onclick="ST.tab='repairs';ST.modalErr='';render()">Reparaciones</button>
         <button class="tab${ST.tab==='log'?' active':''}" onclick="ST.tab='log';render()">Historial</button>
         ${isAdmin?`<button class="tab${ST.tab==='stats'?' active':''}" onclick="ST.tab='stats';render()">Resumen</button>`:''}
       </div>`;
       if(ST.tab==='service') h+=renderService(bus);
       if(ST.tab==='tires')   h+=renderTires(bus);
+      if(ST.tab==='repairs') h+=renderRepairs(bus);
       if(ST.tab==='log')     h+=renderLog(bus);
       if(ST.tab==='stats' && isAdmin) h+=renderStats(bus);
     }
@@ -718,6 +731,69 @@ function renderService(bus){
   return h;
 }
 
+function renderRepairs(bus){
+  const repairLogs=busLogs(bus.id).filter(l=>l.type==='repair');
+  const total=repairLogs.reduce((s,l)=>s+(l.cost||0),0);
+
+  let h=`<div class="two-col"><div>`;
+
+  h+=`<div class="card">
+    <div class="section-hdr" style="margin-bottom:0.75rem"><h4>Registrar reparación</h4></div>
+    <div class="fg2">
+      <div class="form-row"><label>Fecha</label><input type="date" id="rp-date" value="${today()}"></div>
+      <div class="form-row"><label>Odómetro *</label><input type="number" id="rp-km" value="${bus.km}" min="0"></div>
+    </div>
+    <div class="form-row"><label>Tipo de reparación *</label>
+      <select id="rp-type">
+        <option value="">— Selecciona tipo —</option>
+        ${REPAIR_TYPES.map(r=>`<option value="${r.id}">${r.lbl}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-row"><label>Descripción de reparación *</label>
+      <textarea id="rp-desc" rows="3" placeholder="Describe el trabajo realizado…"></textarea>
+    </div>
+    <div class="form-row"><label>Costo ($) *</label>
+      <input type="number" id="rp-cost" value="" min="0" placeholder="0">
+    </div>
+    ${ST.modalErr?`<div class="modal-err">${ST.modalErr}</div>`:''}
+    <div style="display:flex;justify-content:flex-end;margin-top:0.75rem">
+      <button class="btn primary" onclick="doSaveRepairLog('${bus.id}')" ${ST.saving?'disabled':''}>
+        ${ST.saving?'<span class="spinner"></span>Guardando...':'+ Registrar'}
+      </button>
+    </div>
+  </div>`;
+
+  if(repairLogs.length){
+    h+=`<div class="card">`;
+    repairLogs.forEach(l=>{
+      const cat=REPAIR_TYPES.find(r=>l.description?.startsWith(r.lbl+' · '));
+      h+=`<div class="log-item">
+        <div class="dot d-repair"></div>
+        <div>
+          <div class="li-title">${l.description||'Reparación'}</div>
+          <div class="li-meta">${l.date} &nbsp;·&nbsp; ${fmt(l.km_after||0)} km</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
+          <span class="li-cost${l.cost?'':' zero'}">${l.cost?mxn(l.cost):'—'}</span>
+          <button class="btn sm ghost" onclick="doDelRepairLog('${l.id}')">✕</button>
+        </div>
+      </div>`;
+    });
+    h+=`</div>`;
+  } else {
+    h+=`<div class="empty-state">Sin reparaciones registradas</div>`;
+  }
+
+  h+=`</div><div><div class="card">
+    <h4 style="margin-bottom:0.75rem">Resumen de reparaciones</h4>
+    <div class="stat-row"><span class="stat-lbl">Total registradas</span><span>${repairLogs.length}</span></div>
+    <div class="stat-row"><span class="stat-lbl">Gasto acumulado</span><span style="font-weight:600">${mxn(total)}</span></div>
+    ${repairLogs.length?`<div class="stat-row"><span class="stat-lbl">Última reparación</span><span>${repairLogs[0].date}</span></div>`:''}
+  </div></div></div>`;
+
+  return h;
+}
+
 function renderLogModal(bus){
   return `<div class="modal-wrap"><div class="modal">
     <h3>Nuevo registro — ${bus.name}</h3>
@@ -1007,6 +1083,47 @@ async function doSaveOilInterval(busId){
   const {error}=await dbSaveBus(bus);
   if(error){ bus.oil_interval=prev; showToast('Error al guardar intervalo.','error'); render(); }
   else showToast('Intervalo actualizado');
+}
+
+async function doSaveRepairLog(busId){
+  if(ST.saving) return;
+  const bus=ST.buses.find(b=>b.id===busId);
+  if(!bus) return;
+  const date=document.getElementById('rp-date').value;
+  const kmRaw=parseInt(document.getElementById('rp-km').value);
+  const repType=document.getElementById('rp-type').value;
+  const desc=document.getElementById('rp-desc').value.trim();
+  const costRaw=document.getElementById('rp-cost').value;
+  const cost=parseFloat(costRaw);
+  if(!date){ ST.modalErr='La fecha es obligatoria.'; render(); return; }
+  if(!kmRaw && kmRaw!==0){ ST.modalErr='El odómetro es obligatorio.'; render(); return; }
+  if(!repType){ ST.modalErr='Selecciona el tipo de reparación.'; render(); return; }
+  if(!desc){ ST.modalErr='La descripción es obligatoria.'; render(); return; }
+  if(costRaw===''||isNaN(cost)||cost<0){ ST.modalErr='El costo es obligatorio.'; render(); return; }
+  const kmAfter=Math.max(kmRaw,bus.km);
+  const prevKm=bus.km;
+  bus.km=kmAfter;
+  const typeLbl=REPAIR_TYPES.find(r=>r.id===repType)?.lbl||repType;
+  const fullDesc=`${typeLbl} · ${desc}`;
+  const log={id:uid(),bus_id:busId,city:bus.city,type:'repair',date,description:fullDesc,cost,km_after:kmAfter,ts:Date.now()};
+  ST.logs.unshift(log);
+  ST.saving=true; ST.modalErr=''; render();
+  const {error:e1}=await dbSaveBus(bus);
+  const {error:e2}=await dbSaveLog(log);
+  if(e1||e2){
+    bus.km=prevKm; ST.logs=ST.logs.filter(l=>l.id!==log.id);
+    ST.saving=false; ST.modalErr='Error al guardar. Intenta de nuevo.'; render(); return;
+  }
+  ST.saving=false; ST.modalErr=''; showToast('Reparación registrada');
+}
+
+async function doDelRepairLog(id){
+  if(!confirm('¿Eliminar esta reparación?')) return;
+  const prev=[...ST.logs];
+  ST.logs=ST.logs.filter(l=>l.id!==id);
+  render();
+  const {error}=await dbDeleteLog(id);
+  if(error){ ST.logs=prev; showToast('Error al eliminar. Intenta de nuevo.','error'); }
 }
 
 function exportCSV(){
