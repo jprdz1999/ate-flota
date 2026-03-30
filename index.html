@@ -270,7 +270,8 @@ function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(
 function today(){ return new Date().toISOString().slice(0,10); }
 function fmt(n){ return Math.round(n).toLocaleString('es-MX'); }
 function mxn(n){ return '$'+Math.round(n).toLocaleString('es-MX'); }
-function cityBuses(){ return ST.buses.filter(b=>ST.auth==='admin'?true:b.city===ST.auth); }
+function authCities(){ return ST.auth==='admin'?null:ST.auth.split(','); }
+function cityBuses(){ const c=authCities(); return ST.buses.filter(b=>!c||c.includes(b.city)); }
 function busLogs(id){ return ST.logs.filter(l=>(l.bus_id||l.busId)===id).sort((a,b)=>b.date.localeCompare(a.date)||(b.ts||0)-(a.ts||0)); }
 function tireKM(tire,km){ return Math.max(0,km-(tire.kmAt||0)); }
 function condFill(c){ return c==='good'?'#639922':c==='mid'?'#EF9F27':c==='worn'?'#E24B4A':'#B4B2A9'; }
@@ -364,7 +365,8 @@ function clReadBMN(pfx,items){
 }
 
 function applyReportFilters(){
-  let rows=[...ST.logs];
+  const allowed=new Set(cityBuses().map(b=>b.id));
+  let rows=ST.logs.filter(l=>allowed.has(l.bus_id||l.busId));
   if(ST.rptBus!=='all') rows=rows.filter(l=>(l.bus_id||l.busId)===ST.rptBus);
   if(ST.rptType!=='all') rows=rows.filter(l=>l.type===ST.rptType);
   if(ST.rptFrom) rows=rows.filter(l=>l.date>=ST.rptFrom);
@@ -431,9 +433,9 @@ function renderApp(){
     ${isAdmin?`<select style="width:auto" onchange="ST.adminFilter=this.value;ST.busId=null;render()">
       <option value="all">Todas las ciudades</option>
       ${Object.entries(CITIES).filter(([k])=>k!=='admin').map(([k,v])=>`<option value="${k}">${v.name}</option>`).join('')}
-    </select>`:`<span class="city-badge">${CITIES[ST.auth]?.name}</span>`}
+    </select>`:`<span class="city-badge">${ST.auth.split(',').map(c=>CITIES[c]?.name).filter(Boolean).join(' · ')}</span>`}
     <button class="btn sm${ST.view==='report'?' primary':''}" onclick="ST.view=ST.view==='report'?'fleet':'report';render()">Reportes</button>
-    <button class="btn sm" onclick="ST.modal='bus';render()">+ Unidad</button>
+    ${isAdmin?`<button class="btn sm" onclick="ST.modal='bus';render()">+ Unidad</button>`:''}
     <button class="btn sm ghost" onclick="doLogout()">Salir</button>
   </div>`;
 
@@ -454,7 +456,8 @@ function renderApp(){
         <div class="cm">${b.client}${isAdmin?' · '+CITIES[b.city]?.name:''}<br>${fmt(b.km)} km</div>
       </div>`;
     });
-    h+=`<div class="bus-chip chip-add" onclick="ST.modal='bus';render()">+ Nueva unidad</div></div>`;
+    if(isAdmin) h+=`<div class="bus-chip chip-add" onclick="ST.modal='bus';render()">+ Nueva unidad</div>`;
+    h+=`</div>`;
     if(!bus){
       h+=`<div class="empty-state">Selecciona una unidad arriba para ver su historial</div>`;
     } else {
@@ -484,6 +487,7 @@ function renderApp(){
 }
 
 function renderReport(){
+  const isAdmin=ST.auth==='admin';
   const buses=cityBuses().slice().sort((a,b)=>a.name.localeCompare(b.name));
   const rows=applyReportFilters();
   const totalCost=rows.reduce((s,l)=>s+(l.cost||0),0);
@@ -515,10 +519,10 @@ function renderReport(){
     </div>
   </div>`;
 
-  h+=`<div class="rpt-kpi-row">
+  h+=`<div class="rpt-kpi-row" style="grid-template-columns:repeat(${isAdmin?4:2},1fr)">
     <div class="kpi"><div class="kl">Registros</div><div class="kv">${rows.length}</div><div class="ks">en filtro actual</div></div>
-    <div class="kpi"><div class="kl">Gasto total</div><div class="kv">${mxn(totalCost)}</div><div class="ks">filtrado</div></div>
-    <div class="kpi"><div class="kl">Promedio por registro</div><div class="kv">${rows.length?mxn(Math.round(totalCost/rows.length)):'—'}</div><div class="ks">con costo</div></div>
+    ${isAdmin?`<div class="kpi"><div class="kl">Gasto total</div><div class="kv">${mxn(totalCost)}</div><div class="ks">filtrado</div></div>`:''}
+    ${isAdmin?`<div class="kpi"><div class="kl">Promedio por registro</div><div class="kv">${rows.length?mxn(Math.round(totalCost/rows.length)):'—'}</div><div class="ks">con costo</div></div>`:''}
     <div class="kpi"><div class="kl">Unidades</div><div class="kv">${uniqBuses}</div><div class="ks">distintas en resultados</div></div>
   </div>`;
 
@@ -537,7 +541,7 @@ function renderReport(){
         <th>Descripción</th>
         <th style="text-align:right">KM</th>
         <th>Técnico</th>
-        <th style="text-align:right;padding-right:1.25rem">Costo</th>
+        ${isAdmin?`<th style="text-align:right;padding-right:1.25rem">Costo</th>`:''}
       </tr></thead>
       <tbody>`;
   rows.forEach(l=>{
@@ -551,7 +555,7 @@ function renderReport(){
       <td style="color:var(--text2);max-width:200px">${l.description||l.desc||'—'}</td>
       <td style="text-align:right;color:var(--text2);white-space:nowrap">${km?fmt(km)+' km':'—'}</td>
       <td style="color:var(--text2)">${l.technician||l.tech||'—'}</td>
-      <td style="text-align:right;font-weight:${l.cost?600:400};padding-right:1.25rem;white-space:nowrap;color:${l.cost?'var(--text)':'var(--text3)'}">${l.cost?mxn(l.cost):'—'}</td>
+      ${isAdmin?`<td style="text-align:right;font-weight:${l.cost?600:400};padding-right:1.25rem;white-space:nowrap;color:${l.cost?'var(--text)':'var(--text3)'}">${l.cost?mxn(l.cost):'—'}</td>`:''}
     </tr>`;
   });
   h+=`</tbody></table></div>
@@ -609,7 +613,7 @@ function renderLog(bus){
   h+=`</div></div>`;
 
   h+=`<div><div class="card"><div class="section-hdr"><h4>${bus.name}</h4>
-      <button class="btn sm ghost danger" onclick="doDelBus('${bus.id}')">Eliminar</button>
+      ${isAdmin?`<button class="btn sm ghost danger" onclick="doDelBus('${bus.id}')">Eliminar</button>`:''}
     </div>
     <div class="stat-row"><span class="stat-lbl">Cliente</span><span>${bus.client}</span></div>
     <div class="stat-row"><span class="stat-lbl">Ciudad</span><span>${CITIES[bus.city]?.name||bus.city}</span></div>
@@ -1474,10 +1478,12 @@ async function doResolveIssue(busId,issueId){
 }
 
 function exportCSV(){
+  const isAdmin=ST.auth==='admin';
   const rows=applyReportFilters();
   if(!rows.length) return;
   const typeLabels={...LOG_TYPES,tire:'Llanta'};
-  const headers=['Fecha','Unidad','Ciudad','Cliente','Tipo','Subtipo','Descripcion','KM','Tecnico','Costo MXN'];
+  const headers=['Fecha','Unidad','Ciudad','Cliente','Tipo','Subtipo','Descripcion','KM','Tecnico'];
+  if(isAdmin) headers.push('Costo MXN');
   const lines=[headers.join(',')];
   rows.forEach(l=>{
     const bus=ST.buses.find(b=>b.id===(l.bus_id||l.busId));
@@ -1490,9 +1496,9 @@ function exportCSV(){
       `"${getSubtipo(l).replace(/"/g,'""')}"`,
       `"${(l.description||l.desc||'').replace(/"/g,'""')}"`,
       l.km_after||l.kmAfter||'',
-      `"${(l.technician||l.tech||'').replace(/"/g,'""')}"`,
-      l.cost||0
+      `"${(l.technician||l.tech||'').replace(/"/g,'""')}"`
     ];
+    if(isAdmin) cells.push(l.cost||0);
     lines.push(cells.join(','));
   });
   const blob=new Blob(['\uFEFF'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
