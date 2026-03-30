@@ -1025,7 +1025,7 @@ function renderChecklistForm(bus){
     </div>
     <div class="fg2">
       <div class="form-row"><label>Conductor/Operador *</label><input type="text" id="cl-conductor" placeholder="Nombre del conductor"></div>
-      <div class="form-row"><label>Cliente/Planta</label><input type="text" id="cl-cliente" placeholder="Cliente o planta" value="${bus.client||''}"></div>
+      <div class="form-row"><label>Supervisado por</label><input type="text" id="cl-supervisor" placeholder="Nombre del supervisor"></div>
     </div>
     <div class="fg3">
       <div class="form-row"><label>Fecha *</label><input type="date" id="cl-fecha" value="${today()}"></div>
@@ -1051,15 +1051,8 @@ function renderChecklistForm(bus){
       ${clBMNRow('cl-niveles',CL_NIVELES)}
     </div>
 
-    <div class="form-row"><label>Otras deficiencias o anomalías</label>
-      <textarea id="cl-anomalias" rows="2" placeholder="Describir cualquier anomalía no cubierta arriba…"></textarea></div>
     <div class="form-row"><label>Reparaciones o acciones requeridas</label>
       <textarea id="cl-reparaciones" rows="2" placeholder="Listar trabajos pendientes — se agregarán como acciones a resolver…"></textarea></div>
-
-    <div class="fg2" style="margin-top:4px">
-      <div class="form-row"><label>Nombre del operador</label><input type="text" id="cl-op-name" placeholder="Nombre completo"></div>
-      <div class="form-row"><label>Nombre del coordinador</label><input type="text" id="cl-coord" placeholder="Nombre completo"></div>
-    </div>
 
     <div id="cl-form-err" class="modal-err" style="display:none;margin-top:8px"></div>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:1rem">
@@ -1428,7 +1421,7 @@ async function doSaveChecklist(busId){
   const kmAfter=Math.max(parseInt(kmVal)||0,bus.km);
   const data={
     conductor,
-    cliente:(document.getElementById('cl-cliente')?.value||'').trim(),
+    supervisor:(document.getElementById('cl-supervisor')?.value||'').trim(),
     hora:document.getElementById('cl-hora')?.value||'',
     combustible:parseFloat(document.getElementById('cl-combustible')?.value)||0,
     docs:clReadBool('cl-docs',CL_DOCS),
@@ -1437,10 +1430,7 @@ async function doSaveChecklist(busId){
     llantas:clReadBMN('cl-llantas',CL_LLANTAS),
     luces:clReadBool('cl-luces',CL_LUCES),
     niveles:clReadBMN('cl-niveles',CL_NIVELES),
-    anomalias:(document.getElementById('cl-anomalias')?.value||'').trim(),
     reparaciones:(document.getElementById('cl-reparaciones')?.value||'').trim(),
-    operador:(document.getElementById('cl-op-name')?.value||'').trim(),
-    coordinador:(document.getElementById('cl-coord')?.value||'').trim(),
   };
   data.passed=!(
     Object.values(data.docs).some(v=>v===false)||
