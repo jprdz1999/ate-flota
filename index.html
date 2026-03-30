@@ -461,12 +461,14 @@ function renderApp(){
       const al=getAlerts(bus);
       if(al.length) h+=`<div class="alert-bar">⚠ ${al.join(' &nbsp;·&nbsp; ')}</div>`;
       h+=`<div class="tab-row">
+        <button class="tab${ST.tab==='status'?' active':''}" onclick="ST.tab='status';render()">Status</button>
         <button class="tab${ST.tab==='service'?' active':''}" onclick="ST.tab='service';ST.modalErr='';render()">Servicio</button>
         <button class="tab${ST.tab==='tires'?' active':''}" onclick="ST.tab='tires';render()">Llantas</button>
         <button class="tab${ST.tab==='repairs'?' active':''}" onclick="ST.tab='repairs';ST.modalErr='';render()">Reparaciones</button>
         <button class="tab${ST.tab==='checklist'?' active':''}" onclick="ST.tab='checklist';ST.clView='history';ST.modalErr='';render()">Checklist</button>
         <button class="tab${ST.tab==='log'?' active':''}" onclick="ST.tab='log';render()">Historial</button>
       </div>`;
+      if(ST.tab==='status')    h+=renderStatus(bus);
       if(ST.tab==='service')   h+=renderService(bus);
       if(ST.tab==='tires')     h+=renderTires(bus);
       if(ST.tab==='repairs')   h+=renderRepairs(bus);
@@ -628,28 +630,22 @@ function renderLog(bus){
   return h;
 }
 
-function renderTires(bus){
+function renderTireSVG(bus, interactive){
   const tires=bus.tires||{};
   const positions=bus.type==='bus'?POS_CFG:POS_CFG.filter(p=>URVAN_POS.has(p.id));
-  const sel=ST.selTire, tire=sel?tires[sel]:null;
-
-  let h=`<div class="two-col"><div class="card"><div class="section-hdr">
-    <h4>Posición de llantas — ${bus.name}</h4>
-    <button class="btn sm primary" onclick="ST.modal='tire';ST.tirePrePos=null;render()">+ Evento</button>
-  </div>`;
-
-  h+=`<div class="tire-wrap"><svg viewBox="0 0 240 305" style="width:100%;display:block">
+  const sel=interactive?ST.selTire:null;
+  let h=`<div class="tire-wrap"><svg viewBox="0 0 240 305" style="width:100%;display:block">
     <rect x="33" y="25" width="174" height="232" rx="10" fill="var(--bg2)" stroke="var(--border)" stroke-width="0.5"/>
     <rect x="51" y="36" width="138" height="46" rx="4" fill="var(--bg)" stroke="var(--border)" stroke-width="0.5"/>
     <rect x="51" y="185" width="138" height="38" rx="4" fill="var(--bg)" stroke="var(--border)" stroke-width="0.5"/>
     <text x="120" y="17" text-anchor="middle" font-size="8" fill="var(--text3)" font-family="-apple-system,sans-serif">FRENTE</text>
     <text x="120" y="300" text-anchor="middle" font-size="8" fill="var(--text3)" font-family="-apple-system,sans-serif">TRASERA</text>`;
-
   positions.forEach(p=>{
     const t=tires[p.id], km=t?tireKM(t,bus.km):0;
     const fill=condFill(t?.cond), isSel=sel===p.id;
     const lines=p.lbl.split('\n'), cx=p.x+p.w/2, cy=p.y+p.h/2;
-    h+=`<g class="tp-btn" onclick="ST.selTire='${p.id}';render()">
+    const click=interactive?`onclick="ST.selTire='${p.id}';render()"`:''
+    h+=`<g class="${interactive?'tp-btn':''}" ${click}>
       <rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="3" fill="${fill}" stroke="${isSel?'#378ADD':'transparent'}" stroke-width="${isSel?2.5:0}"/>`;
     if(p.spare){
       h+=`<text x="${cx}" y="${cy-4}" text-anchor="middle" font-size="7" fill="white" font-family="-apple-system,sans-serif" font-weight="600">REF</text>
@@ -664,7 +660,87 @@ function renderTires(bus){
   h+=`<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;font-size:11px;color:var(--text2);margin-top:0.5rem">
     ${[['#639922','Buena'],['#EF9F27','Medio'],['#E24B4A','Alto desgaste'],['#B4B2A9','Sin datos']].map(([c,l])=>
       `<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:${c};flex-shrink:0;display:inline-block"></span>${l}</span>`).join('')}
+  </div>`;
+  return h;
+}
+
+function renderStatus(bus){
+  const svcAl=getServiceAlert(bus);
+  const interval=oilInterval(bus);
+  const openIssues=(bus.open_issues||[]).filter(i=>!i.resolved);
+
+  // Oil KM box config
+  let oilBg,oilColor,oilLabel,oilValue;
+  if(svcAl.status==='none'){
+    oilBg='var(--bg2)'; oilColor='var(--text3)'; oilLabel='Sin registro de aceite'; oilValue='—';
+  } else if(svcAl.status==='overdue'){
+    oilBg='var(--red-bg)'; oilColor='var(--red-dark)';
+    oilLabel=`Cambio vencido por`; oilValue=`${fmt(svcAl.overdueBy)} km`;
+  } else if(svcAl.remaining<=1000){
+    oilBg='var(--amber-bg)'; oilColor='var(--amber-dark)';
+    oilLabel='Próximo cambio en'; oilValue=`${fmt(svcAl.remaining)} km`;
+  } else {
+    oilBg='var(--green-bg)'; oilColor='var(--green-dark)';
+    oilLabel='Próximo cambio en'; oilValue=`${fmt(svcAl.remaining)} km`;
+  }
+  const lastSvcDate=svcAl.lastLog?.date;
+  const nextKm=svcAl.lastLog?(svcAl.lastLog.km_after||0)+interval:null;
+
+  let h=`<div style="background:${oilBg};border:0.5px solid ${oilColor};border-radius:var(--radius-lg);padding:1.5rem;margin-bottom:1rem;text-align:center">
+    <div style="font-size:12px;font-weight:600;color:${oilColor};text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">${oilLabel}</div>
+    <div style="font-size:48px;font-weight:700;color:${oilColor};line-height:1;margin-bottom:8px">${oilValue}</div>
+    <div style="font-size:12px;color:${oilColor};opacity:0.75">${lastSvcDate?`Último cambio: ${lastSvcDate} &nbsp;·&nbsp; `:''} ${nextKm?`Siguiente a los ${fmt(nextKm)} km`:'Configura el intervalo en la pestaña Servicio'}</div>
+  </div>`;
+
+  h+=`<div class="two-col"><div>`;
+
+  // Open issues
+  if(openIssues.length){
+    h+=`<div class="card" style="border-color:rgba(226,75,74,0.45);margin-bottom:10px">
+      <div class="section-hdr" style="margin-bottom:0.75rem"><h4 style="color:var(--red-dark)">⚠ Acciones pendientes — ${openIssues.length}</h4></div>`;
+    openIssues.forEach(iss=>{
+      h+=`<div class="issue-item">
+        <div style="flex:1"><div style="font-size:13px;color:var(--text);line-height:1.4">${iss.text}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Reportado: ${iss.date}</div></div>
+        <button class="btn sm" onclick="doResolveIssue('${bus.id}','${iss.id}')">Resolver ✓</button>
+      </div>`;
+    });
+    h+=`</div>`;
+  }
+
+  // Vehicle quick stats
+  h+=`<div class="card">
+    <h4 style="margin-bottom:0.75rem">${bus.name}</h4>
+    <div class="stat-row"><span class="stat-lbl">Cliente</span><span>${bus.client}</span></div>
+    <div class="stat-row"><span class="stat-lbl">Tipo</span><span>${bus.type==='bus'?'Autobús':'Urvan / Sprinter'}</span></div>
+    <div class="stat-row"><span class="stat-lbl">Odómetro</span><span style="font-weight:600">${fmt(bus.km)} km</span></div>
+    <div class="stat-row"><span class="stat-lbl">Intervalo aceite</span><span>${fmt(interval)} km</span></div>
+    ${svcAl.lastLog?`<div class="stat-row"><span class="stat-lbl">Último servicio</span><span>${svcAl.lastLog.date}</span></div>`:''}
   </div></div>`;
+
+  // Tire diagram
+  h+=`<div><div class="card">
+    <h4 style="margin-bottom:0.75rem">Estado de llantas</h4>
+    ${renderTireSVG(bus, false)}
+    <div style="margin-top:0.75rem;text-align:center">
+      <button class="btn sm" onclick="ST.tab='tires';render()">Ver detalle →</button>
+    </div>
+  </div></div></div>`;
+
+  return h;
+}
+
+function renderTires(bus){
+  const tires=bus.tires||{};
+  const positions=bus.type==='bus'?POS_CFG:POS_CFG.filter(p=>URVAN_POS.has(p.id));
+  const sel=ST.selTire, tire=sel?tires[sel]:null;
+
+  let h=`<div class="two-col"><div class="card"><div class="section-hdr">
+    <h4>Posición de llantas — ${bus.name}</h4>
+    <button class="btn sm primary" onclick="ST.modal='tire';ST.tirePrePos=null;render()">+ Evento</button>
+  </div>`;
+
+  h+=renderTireSVG(bus, true);
 
   h+=`<div>`;
   if(!sel){
@@ -1093,7 +1169,7 @@ function renderBusModal(){
 }
 
 // ─── ACTIONS ─────────────────────────────────────────────────────────────────
-function selectBus(id){ ST.busId=id; ST.selTire=null; ST.tab='log'; ST.clView='history'; render(); }
+function selectBus(id){ ST.busId=id; ST.selTire=null; ST.tab='status'; ST.clView='history'; render(); }
 function openTireAt(pos){ ST.tirePrePos=pos; ST.tirePreEvent='new'; ST.modal='tire'; render(); }
 function openTireAction(pos,event){ ST.tirePrePos=pos; ST.tirePreEvent=event; ST.modal='tire'; render(); }
 
