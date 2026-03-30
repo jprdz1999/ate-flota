@@ -1025,7 +1025,7 @@ function renderChecklistForm(bus){
     </div>
     <div class="fg2">
       <div class="form-row"><label>Conductor/Operador *</label><input type="text" id="cl-conductor" placeholder="Nombre del conductor"></div>
-      <div class="form-row"><label>Supervisado por</label><input type="text" id="cl-supervisor" placeholder="Nombre del supervisor"></div>
+      <div class="form-row"><label>Supervisado por *</label><input type="text" id="cl-supervisor" placeholder="Nombre del supervisor"></div>
     </div>
     <div class="fg3">
       <div class="form-row"><label>Fecha *</label><input type="date" id="cl-fecha" value="${today()}"></div>
@@ -1417,11 +1417,13 @@ async function doSaveChecklist(busId){
   if(!conductor){ showClErr('El conductor/operador es obligatorio.'); return; }
   if(!fecha){ showClErr('La fecha es obligatoria.'); return; }
   if(kmVal===''){ showClErr('El kilometraje es obligatorio.'); return; }
+  const supervisor=(document.getElementById('cl-supervisor')?.value||'').trim();
+  if(!supervisor){ showClErr('El supervisor es obligatorio.'); return; }
   showClErr('');
   const kmAfter=Math.max(parseInt(kmVal)||0,bus.km);
   const data={
     conductor,
-    supervisor:(document.getElementById('cl-supervisor')?.value||'').trim(),
+    supervisor,
     hora:document.getElementById('cl-hora')?.value||'',
     combustible:parseFloat(document.getElementById('cl-combustible')?.value)||0,
     docs:clReadBool('cl-docs',CL_DOCS),
