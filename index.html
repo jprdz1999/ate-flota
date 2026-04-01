@@ -224,7 +224,7 @@ let ST = {
   loginErr:'', saving:false,
   adminFilter:'all', buses:[], logs:[], toast:null, toastType:null, modalErr:'',
   view:'fleet', rptBus:'all', rptType:'all', rptFrom:'', rptTo:'',
-  clView:'history', svcErrType:null
+  clView:'history', svcErrType:null, selService:null
 };
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
@@ -487,7 +487,7 @@ function renderApp(){
       if(al.length) h+=`<div class="alert-bar">⚠ ${al.join(' &nbsp;·&nbsp; ')}</div>`;
       h+=`<div class="tab-row">
         <button class="tab${ST.tab==='status'?' active':''}" onclick="ST.tab='status';render()">Status</button>
-        <button class="tab${ST.tab==='service'?' active':''}" onclick="ST.tab='service';ST.modalErr='';render()">Servicio</button>
+        <button class="tab${ST.tab==='service'?' active':''}" onclick="ST.tab='service';ST.modalErr='';ST.selService=null;render()">Servicio</button>
         <button class="tab${ST.tab==='tires'?' active':''}" onclick="ST.tab='tires';render()">Llantas</button>
         <button class="tab${ST.tab==='repairs'?' active':''}" onclick="ST.tab='repairs';ST.modalErr='';render()">Reparaciones</button>
         <button class="tab${ST.tab==='checklist'?' active':''}" onclick="ST.tab='checklist';ST.clView='history';ST.modalErr='';render()">Checklist</button>
@@ -856,89 +856,99 @@ function renderStats(bus){
 function renderService(bus){
   const svcs=applicableServices(bus);
   const pfxMap={svc:'e',svc_trans:'t',svc_diff:'d'};
-  let h='';
+  const svc=svcs.find(s=>s.type===ST.selService)||null;
 
-  svcs.forEach(svc=>{
-    const pfx=pfxMap[svc.type];
-    const al=getServiceAlertFor(bus,svc.type,svc.interval);
-    const logs=busLogs(bus.id).filter(l=>l.type===svc.type);
+  // Selector card
+  let h=`<div class="card" style="margin-bottom:10px">
+    <div class="form-row" style="margin:0"><label>Tipo de servicio</label>
+      <select onchange="ST.selService=this.value||null;ST.modalErr='';ST.svcErrType=null;render()">
+        <option value="">— Selecciona un servicio —</option>
+        ${svcs.map(s=>`<option value="${s.type}"${ST.selService===s.type?' selected':''}>${s.label}</option>`).join('')}
+      </select>
+    </div>
+  </div>`;
 
-    if(al.status==='overdue'){
-      h+=`<div class="alert-bar red">⚠ ${svc.label} vencido — ${fmt(al.overdueBy)} km de retraso</div>`;
-    } else if(al.status==='ok'){
-      h+=`<div class="alert-bar green">✓ ${svc.label}: próximo en ${fmt(al.remaining)} km</div>`;
-    } else {
-      h+=`<div class="alert-bar">Sin registros de ${svc.label.toLowerCase()}</div>`;
-    }
+  if(!svc) return h;
 
-    h+=`<div class="two-col"><div>`;
-    h+=`<div class="card">
-      <div class="section-hdr" style="margin-bottom:0.75rem"><h4>${svc.label}</h4></div>
-      <div class="fg2">
-        <div class="form-row"><label>Fecha</label><input type="date" id="sv-${pfx}-date" value="${today()}"></div>
-        <div class="form-row"><label>KM actuales (odómetro)</label><input type="number" id="sv-${pfx}-km" value="${bus.km}"></div>
+  const pfx=pfxMap[svc.type];
+  const al=getServiceAlertFor(bus,svc.type,svc.interval);
+  const logs=busLogs(bus.id).filter(l=>l.type===svc.type);
+
+  if(al.status==='overdue'){
+    h+=`<div class="alert-bar red">⚠ ${svc.label} vencido — ${fmt(al.overdueBy)} km de retraso</div>`;
+  } else if(al.status==='ok'){
+    h+=`<div class="alert-bar green">✓ Próximo en ${fmt(al.remaining)} km · Último a ${fmt(al.lastLog.km_after||0)} km el ${al.lastLog.date}</div>`;
+  } else {
+    h+=`<div class="alert-bar">Sin registros de ${svc.label.toLowerCase()}</div>`;
+  }
+
+  h+=`<div class="two-col"><div>`;
+  h+=`<div class="card">
+    <div class="section-hdr" style="margin-bottom:0.75rem"><h4>Registrar — ${svc.label}</h4></div>
+    <div class="fg2">
+      <div class="form-row"><label>Fecha</label><input type="date" id="sv-${pfx}-date" value="${today()}"></div>
+      <div class="form-row"><label>KM actuales (odómetro)</label><input type="number" id="sv-${pfx}-km" value="${bus.km}"></div>
+    </div>
+    <div class="fg2">
+      <div class="form-row"><label>Producto / Marca</label><input type="text" id="sv-${pfx}-brand" placeholder="Ej: Mobil 1 5W-30"></div>
+      <div class="form-row"><label>Costo ($)</label><input type="number" id="sv-${pfx}-cost" value="0" min="0"></div>
+    </div>
+    ${svc.type==='svc'?`<div class="form-row" style="margin-top:4px">
+      <label style="margin-bottom:6px">También se cambió</label>
+      <div class="cb-grid">
+        <label class="cb-item"><input type="checkbox" id="sv-e-cb-fuel"> Filtro de combustible</label>
+        <label class="cb-item"><input type="checkbox" id="sv-e-cb-air"> Filtro de aire</label>
+        <label class="cb-item"><input type="checkbox" id="sv-e-cb-sec"> Filtro secundario</label>
+        <label class="cb-item"><input type="checkbox" id="sv-e-cb-oilf"> Filtro de aceite</label>
+        <label class="cb-item"><input type="checkbox" id="sv-e-cb-spark"> Bujías</label>
       </div>
-      <div class="fg2">
-        <div class="form-row"><label>Producto / Marca</label><input type="text" id="sv-${pfx}-brand" placeholder="Ej: Mobil 1 5W-30"></div>
-        <div class="form-row"><label>Costo ($)</label><input type="number" id="sv-${pfx}-cost" value="0" min="0"></div>
-      </div>
-      ${svc.type==='svc'?`<div class="form-row" style="margin-top:4px">
-        <label style="margin-bottom:6px">También se cambió</label>
-        <div class="cb-grid">
-          <label class="cb-item"><input type="checkbox" id="sv-e-cb-fuel"> Filtro de combustible</label>
-          <label class="cb-item"><input type="checkbox" id="sv-e-cb-air"> Filtro de aire</label>
-          <label class="cb-item"><input type="checkbox" id="sv-e-cb-sec"> Filtro secundario</label>
-          <label class="cb-item"><input type="checkbox" id="sv-e-cb-oilf"> Filtro de aceite</label>
-          <label class="cb-item"><input type="checkbox" id="sv-e-cb-spark"> Bujías</label>
+    </div>`:''}
+    ${ST.modalErr?`<div class="modal-err">${ST.modalErr}</div>`:''}
+    <div style="display:flex;justify-content:flex-end;margin-top:0.75rem">
+      <button class="btn primary" onclick="doSaveServiceLog('${bus.id}','${svc.type}','${pfx}')" ${ST.saving?'disabled':''}>
+        ${ST.saving?'<span class="spinner"></span>Guardando...':'+ Registrar'}
+      </button>
+    </div>
+  </div>`;
+
+  if(logs.length){
+    h+=`<div class="card">`;
+    logs.forEach(l=>{
+      h+=`<div class="log-item">
+        <div class="dot" style="background:var(--green)"></div>
+        <div>
+          <div class="li-title">${l.description||svc.label}</div>
+          <div class="li-meta">${l.date} &nbsp;·&nbsp; ${fmt(l.km_after||0)} km</div>
         </div>
-      </div>`:''}
-      ${ST.modalErr&&ST.svcErrType===svc.type?`<div class="modal-err">${ST.modalErr}</div>`:''}
-      <div style="display:flex;justify-content:flex-end;margin-top:0.75rem">
-        <button class="btn primary" onclick="doSaveServiceLog('${bus.id}','${svc.type}','${pfx}')" ${ST.saving?'disabled':''}>
-          ${ST.saving?'<span class="spinner"></span>Guardando...':'+ Registrar'}
-        </button>
-      </div>
-    </div>`;
-
-    if(logs.length){
-      h+=`<div class="card">`;
-      logs.forEach(l=>{
-        h+=`<div class="log-item">
-          <div class="dot" style="background:var(--green)"></div>
-          <div>
-            <div class="li-title">${l.description||svc.label}</div>
-            <div class="li-meta">${l.date} &nbsp;·&nbsp; ${fmt(l.km_after||0)} km</div>
-          </div>
-          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
-            <span class="li-cost${l.cost?'':' zero'}">${l.cost?mxn(l.cost):'—'}</span>
-            <button class="btn sm ghost" onclick="doDelServiceLog('${l.id}')">✕</button>
-          </div>
-        </div>`;
-      });
-      h+=`</div>`;
-    } else {
-      h+=`<div class="empty-state">Sin registros de ${svc.label.toLowerCase()}</div>`;
-    }
-
-    h+=`</div><div><div class="card">
-      <h4 style="margin-bottom:0.75rem">Estado de servicio</h4>
-      <div class="stat-row"><span class="stat-lbl">Odómetro actual</span><span>${fmt(bus.km)} km</span></div>
-      ${al.lastLog?`
-      <div class="stat-row"><span class="stat-lbl">Último cambio</span><span>${al.lastLog.date}</span></div>
-      <div class="stat-row"><span class="stat-lbl">KM en cambio</span><span>${fmt(al.lastLog.km_after||0)} km</span></div>
-      <div class="stat-row"><span class="stat-lbl">KM desde cambio</span>
-        <span style="font-weight:600;color:${al.status==='overdue'?'var(--red-dark)':'var(--green-dark)'}">${fmt(al.km)} km</span></div>
-      `:''}
-      <div class="stat-row"><span class="stat-lbl">Intervalo</span><span>${fmt(svc.interval)} km</span></div>
-      ${svc.type==='svc'?`<div style="margin-top:0.75rem;padding-top:0.75rem;border-top:0.5px solid var(--border)">
-        <label>Cambiar intervalo (km)</label>
-        <div style="display:flex;gap:8px;margin-top:4px">
-          <input type="number" id="sv-interval" value="${svc.interval}" min="1000" step="500" style="flex:1">
-          <button class="btn" onclick="doSaveOilInterval('${bus.id}')">Guardar</button>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
+          <span class="li-cost${l.cost?'':' zero'}">${l.cost?mxn(l.cost):'—'}</span>
+          <button class="btn sm ghost" onclick="doDelServiceLog('${l.id}')">✕</button>
         </div>
-      </div>`:''}
-    </div></div></div>`;
-  });
+      </div>`;
+    });
+    h+=`</div>`;
+  } else {
+    h+=`<div class="empty-state">Sin registros de ${svc.label.toLowerCase()}</div>`;
+  }
+
+  h+=`</div><div><div class="card">
+    <h4 style="margin-bottom:0.75rem">Estado de servicio</h4>
+    <div class="stat-row"><span class="stat-lbl">Odómetro actual</span><span>${fmt(bus.km)} km</span></div>
+    ${al.lastLog?`
+    <div class="stat-row"><span class="stat-lbl">Último cambio</span><span>${al.lastLog.date}</span></div>
+    <div class="stat-row"><span class="stat-lbl">KM en cambio</span><span>${fmt(al.lastLog.km_after||0)} km</span></div>
+    <div class="stat-row"><span class="stat-lbl">KM desde cambio</span>
+      <span style="font-weight:600;color:${al.status==='overdue'?'var(--red-dark)':'var(--green-dark)'}">${fmt(al.km)} km</span></div>
+    `:''}
+    <div class="stat-row"><span class="stat-lbl">Intervalo</span><span>${fmt(svc.interval)} km</span></div>
+    ${svc.type==='svc'?`<div style="margin-top:0.75rem;padding-top:0.75rem;border-top:0.5px solid var(--border)">
+      <label>Cambiar intervalo (km)</label>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <input type="number" id="sv-interval" value="${svc.interval}" min="1000" step="500" style="flex:1">
+        <button class="btn" onclick="doSaveOilInterval('${bus.id}')">Guardar</button>
+      </div>
+    </div>`:''}
+  </div></div></div>`;
 
   return h;
 }
