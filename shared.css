@@ -1,0 +1,97 @@
+/* Diseño base compartido entre index.html y chequeo.html — colores, tipografía,
+   botones, cards, forms, y los componentes de Mini-Checkups (fotos/diagrama/
+   autocomplete de operador) que ambas páginas necesitan. Estilos específicos
+   de cada página (grid de flota, tabs, reportes, tablas, etc.) se quedan
+   inline en el <style> de cada archivo. */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#ffffff;--bg2:#f7f7f5;--bg3:#f0f0ec;
+  --text:#1a1a1a;--text2:#666;--text3:#999;
+  --border:rgba(0,0,0,0.12);--border2:rgba(0,0,0,0.22);
+  --blue:#378ADD;--blue-dark:#185FA5;--blue-bg:#E6F1FB;
+  --green:#639922;--green-bg:#EAF3DE;--green-dark:#27500A;
+  --amber:#EF9F27;--amber-bg:#FAEEDA;--amber-dark:#633806;
+  --red:#E24B4A;--red-bg:#FCEBEB;--red-dark:#791F1F;
+  --radius:8px;--radius-lg:12px;
+}
+@media(prefers-color-scheme:dark){
+  :root{
+    --bg:#1e1e1c;--bg2:#2a2a28;--bg3:#323230;
+    --text:#f0f0ec;--text2:#aaa;--text3:#666;
+    --border:rgba(255,255,255,0.12);--border2:rgba(255,255,255,0.22);
+    --blue-bg:#0c2a42;--green-bg:#1a2d0a;--amber-bg:#2d1f06;--red-bg:#2d0f0f;
+  }
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg3);color:var(--text);font-size:14px;min-height:100vh}
+.wrap{max-width:960px;margin:0 auto;padding:1rem}
+button,input,select,textarea{font-family:inherit;font-size:13px}
+input,select,textarea{background:var(--bg);color:var(--text);border:0.5px solid var(--border2);border-radius:var(--radius);padding:8px 11px;width:100%}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(55,138,221,0.15)}
+label{font-size:12px;color:var(--text2);display:block;margin-bottom:4px}
+.btn{padding:8px 16px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);cursor:pointer;font-weight:500;white-space:nowrap}
+.btn:hover{background:var(--bg2)}.btn:active{transform:scale(0.98)}
+.btn.primary{background:var(--blue);color:#fff;border-color:var(--blue-dark)}
+.btn.primary:hover{background:var(--blue-dark)}
+.btn.danger{color:var(--red-dark);border-color:rgba(226,75,74,0.4)}
+.btn.danger:hover{background:var(--red-bg)}
+.btn.ghost{border-color:transparent;color:var(--text2)}
+.btn.ghost:hover{background:var(--bg2);border-color:var(--border)}
+.btn.sm{padding:5px 11px;font-size:12px}
+.btn.full{width:100%}
+.card{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:1.25rem;margin-bottom:12px}
+.nav{display:flex;align-items:center;gap:10px;padding:1rem 0 0.75rem;margin-bottom:1.25rem;border-bottom:0.5px solid var(--border);flex-wrap:wrap}
+.nav-brand{font-size:15px;font-weight:600;flex:1;min-width:100px;color:var(--text)}
+.city-badge{font-size:12px;padding:4px 10px;border-radius:var(--radius);background:var(--bg2);color:var(--text2);border:0.5px solid var(--border)}
+.section-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem}
+.form-row{margin-bottom:11px}
+.fg2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fg3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1rem}
+.login-box{width:100%;max-width:360px}
+.login-box h1{font-size:22px;font-weight:700;margin-bottom:4px}
+.login-box .sub{font-size:13px;color:var(--text2);margin-bottom:1.75rem;line-height:1.5}
+.err{font-size:12px;color:var(--red-dark);margin-top:6px;min-height:18px}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty-state{text-align:center;padding:2.5rem 1rem;color:var(--text3);font-size:13px}
+.filter-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:0.75rem}
+.filter-btn{padding:4px 11px;font-size:12px;border:0.5px solid var(--border);border-radius:99px;background:transparent;color:var(--text2);cursor:pointer;font-weight:500}
+.filter-btn.active{background:var(--bg2);color:var(--text);border-color:var(--border2)}
+.loading-screen{display:flex;align-items:center;justify-content:center;min-height:200px;color:var(--text2);font-size:13px;gap:8px}
+.toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:var(--green);color:#fff;padding:10px 22px;border-radius:var(--radius);font-size:13px;font-weight:500;z-index:999;pointer-events:none;box-shadow:0 2px 12px rgba(0,0,0,0.18);animation:toastIn 0.2s ease}
+.toast.error{background:var(--red)}
+@keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+.modal-err{font-size:12px;color:var(--red-dark);background:var(--red-bg);border:0.5px solid rgba(226,75,74,0.3);border-radius:var(--radius);padding:8px 11px;margin-bottom:10px}
+.modal-wrap{background:rgba(0,0,0,0.4);border-radius:var(--radius-lg);padding:1.5rem;margin-top:1rem;display:flex;justify-content:center;align-items:flex-start}
+.modal{background:var(--bg);border:0.5px solid var(--border2);border-radius:var(--radius-lg);padding:1.5rem;width:100%;max-width:460px}
+.modal h3{margin-bottom:1rem;font-size:15px;font-weight:600}
+.modal-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:1.25rem}
+.pill{display:inline-block;font-size:11px;padding:2px 9px;border-radius:99px;font-weight:600}
+.pill-good{background:var(--green-bg);color:var(--green-dark)}
+.pill-mid{background:var(--amber-bg);color:var(--amber-dark)}
+.pill-worn{background:var(--red-bg);color:var(--red-dark)}
+.pill-empty{background:var(--bg2);color:var(--text3)}
+
+/* Mini-Checkups: fotos, diagrama, autocomplete de operador */
+.chq-photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
+.chq-photo-slot{border:0.5px dashed var(--border2);border-radius:var(--radius);padding:8px;text-align:center;cursor:pointer;position:relative;background:var(--bg2)}
+.chq-photo-slot.done{border-style:solid;border-color:var(--green)}
+.chq-photo-slot input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.chq-photo-slot img{width:100%;height:80px;object-fit:cover;border-radius:4px;margin-bottom:4px;background:var(--bg3)}
+.chq-photo-slot .cps-lbl{font-size:11px;color:var(--text2);font-weight:500}
+.chq-diagram-wrap{position:relative;max-width:340px;margin:0 auto}
+.chq-pin{cursor:pointer}
+.chq-pin.locked{cursor:default}
+.chq-badge{background:var(--red);color:#fff;font-size:10px;font-weight:700;border-radius:99px;padding:1px 6px;margin-left:4px}
+.chq-op-sugg{border:0.5px solid var(--border);border-radius:var(--radius);margin-top:4px;overflow:hidden}
+.chq-op-sugg-item{padding:7px 11px;font-size:13px;cursor:pointer;border-bottom:0.5px solid var(--border)}
+.chq-op-sugg-item:last-child{border-bottom:none}
+.chq-op-sugg-item:hover{background:var(--bg2)}
+
+/* Chequeo rápido (chequeo.html): selector de unidad, pantalla de éxito */
+.chq-unit-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;border:0.5px solid var(--border);border-radius:var(--radius-lg);margin-bottom:8px;cursor:pointer;background:var(--bg)}
+.chq-unit-row:hover{border-color:var(--border2);background:var(--bg2)}
+.chq-unit-row .cun{font-size:14px;font-weight:600}
+.chq-unit-row .cum{font-size:12px;color:var(--text2);margin-top:2px}
+.chq-success{text-align:center;padding:2.5rem 1rem}
+.chq-success .ico{font-size:40px;line-height:1;margin-bottom:0.75rem}

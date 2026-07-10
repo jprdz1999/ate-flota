@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chequeo Rápido — Grupo ATE</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="shared.css">
+<style>
+.chq-search{font-size:16px;padding:12px 14px;margin-bottom:12px}
+.chq-hdr{display:flex;align-items:center;gap:10px;padding:1rem 0 0.75rem;margin-bottom:1rem;border-bottom:0.5px solid var(--border)}
+.chq-hdr h1{font-size:16px;font-weight:600;flex:1}
+</style>
+</head>
+<body>
+<div class="wrap" id="root" style="max-width:520px"><div class="loading-screen"><span class="spinner"></span>Cargando...</div></div>
+
+<script>
+// ─── CONFIG ──────────────────────────────────────────────────────────────────
+const SUPABASE_URL = 'https://mxxvphizdhinixnhtulm.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_WB81yFJaOP0p4b7wiCcWDg_ajhjT68G';
+
+const CITIES = {
+  tj:'Tijuana', mex:'Mexicali', gdl:'Guadalajara', ver:'Veracruz',
+  hgo:'Hidalgo', can:'Cancún', mer:'Mérida', qro:'Querétaro', admin:'Admin — Todas'
+};
+const CHQ_SLOTS = ['frontal','trasera','lateral_izq','lateral_der','parabrisas','llantas'];
+const CHQ_SLOT_LABELS = {frontal:'Frontal',trasera:'Trasera',lateral_izq:'Lateral izquierdo',lateral_der:'Lateral derecho',parabrisas:'Parabrisas',llantas:'Llantas'};
+// Vista de planta de un camión: frente a la izquierda (x bajo), trasera a la
+// derecha (x alto) — debe quedar igual que el diagrama de solo-lectura en
+// index.html (misma silueta, para que un chequeo se vea igual en ambos lados).
+const CHQ_DIAGRAM_W=400, CHQ_DIAGRAM_H=170;
+
+// ─── STATE ───────────────────────────────────────────────────────────────────
+let sb = null;
+let ST = {
+  auth:null, authEmail:null, saving:false, loginErr:'',
+  buses:[], bases:[], operadores:[], operadorAlias:[], chequeos:[],
+  toast:null, toastType:null,
+
+  chqDeepLinkBusId:null,
+  view:'picker', pickerQuery:'',
+  chqBusId:null, chqBase:'', chqId:null,
+  chqPhotos:{}, chqPhotoPreviews:{}, chqUploadProgress:{},
+  chqPrevPins:[], chqPins:[], chqPinDraft:null,
+  chqOperadorText:'', chqOperadorMatches:[], chqOperadorResolvedId:null, chqOperadorConfirmingAlias:null,
+  chqErr:'', chqLastResult:null
+};
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+async function init(){
+  const qsUnidad = new URLSearchParams(location.search).get('unidad');
+  if(qsUnidad) ST.chqDeepLinkBusId = qsUnidad;
+  try {
+    sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { storage: window.sessionStorage, persistSession: true }
+    });
+    const { data:{ session } } = await sb.auth.getSession();
+    if(session){
+      const city = session.user?.user_metadata?.city;
+      if(city){
+        ST.auth = city; ST.authEmail = session.user?.email || null;
+        const {error}=await loadData(); if(error) console.error('Error cargando datos:', error);
+        consumeDeepLink();
+      }
+    }
+  } catch(e){ console.error('Supabase unreachable:', e); }
+  render();
+}
+function consumeDeepLink(){
+  if(!ST.chqDeepLinkBusId) return;
+  const busId=ST.chqDeepLinkBusId;
+  ST.chqDeepLinkBusId=null;
+  history.replaceState(null,'',location.pathname);
+  if(ST.buses.some(b=>b.id===busId)) openCapture(busId);
+}
+
+// ─── DATA LAYER ──────────────────────────────────────────────────────────────
+async function loadData(){
+  const [r1,r2,r3,r4,r5]=await Promise.all([
+    sb.from('buses').select('*'),
+    sb.from('bases').select('*'),
+    sb.from('operadores').select('*'),
+    sb.from('operador_alias').select('*'),
+    sb.from('chequeos_rapidos').select('*').order('fecha',{ascending:false}),
+  ]);
+  const err=r1.error||r2.error||r3.error||r4.error||r5.error;
+  if(err) return {error:err.message};
+  ST.buses=r1.data||[]; ST.bases=r2.data||[]; ST.operadores=r3.data||[]; ST.operadorAlias=r4.data||[]; ST.chequeos=r5.data||[];
+  return {error:null};
+}
+async function dbSaveChequeo(chq){
+  if(!sb) return {error:'Sin conexión'};
+  const {error}=await sb.from('chequeos_rapidos').insert(chq);
+  return {error};
+}
+async function dbSaveOperador(operador){
+  if(!sb) return {error:'Sin conexión'};
+  const {error}=await sb.from('operadores').upsert(operador);
+  return {error};
+}
+async function dbSaveOperadorAlias(alias){
+  if(!sb) return {error:'Sin conexión'};
+  const {error}=await sb.from('operador_alias').insert(alias);
+  return {error};
+}
+async function dbUploadChequeoPhoto(chequeoId, slot, file){
+  if(!sb) return {error:'Sin conexión'};
+  const path=`${chequeoId}/${slot}.jpg`;
+  const {error}=await sb.storage.from('chequeos').upload(path, file, {upsert:true});
+  return {path, error};
+}
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function today(){ return new Date().toISOString().slice(0,10); }
+function escHtml(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function authCities(){ return ST.auth==='admin'?null:ST.auth.split(','); }
+function cityBuses(){ const c=authCities(); return ST.buses.filter(b=>!c||c.includes(b.city)); }
+function chqNormalize(s){
+  return (s||'').toLowerCase().normalize('NFD').replace(new RegExp('[̀-ͯ]','g'),'').replace(/\s+/g,' ').trim();
+}
+function chqSimilarity(a,b){
+  a=chqNormalize(a); b=chqNormalize(b);
+  if(!a||!b) return 0;
+  if(a===b) return 1;
+  if(a.includes(b)||b.includes(a)) return 0.85;
+  const wa=new Set(a.split(' ')), wb=new Set(b.split(' '));
+  let overlap=0; wa.forEach(w=>{ if(wb.has(w)) overlap++; });
+  const denom=Math.max(wa.size,wb.size)||1;
+  return overlap/denom;
+}
+function fuzzyMatchOperador(text){
+  if(!chqNormalize(text)) return [];
+  const scored=[];
+  ST.operadores.forEach(op=>{
+    scored.push({operadorId:op.id, label:op.nombre_canonico, score:chqSimilarity(text,op.nombre_canonico)});
+  });
+  ST.operadorAlias.forEach(al=>{
+    const op=ST.operadores.find(o=>o.id===al.operador_id);
+    if(!op) return;
+    scored.push({operadorId:op.id, label:`${op.nombre_canonico} ("${al.alias}")`, score:chqSimilarity(text,al.alias)});
+  });
+  const byOperador={};
+  scored.forEach(s=>{ if(!byOperador[s.operadorId]||s.score>byOperador[s.operadorId].score) byOperador[s.operadorId]=s; });
+  return Object.values(byOperador).filter(s=>s.score>=0.4).sort((a,b)=>b.score-a.score).slice(0,3);
+}
+function chqFindExactOperador(text){
+  const norm=chqNormalize(text);
+  if(!norm) return null;
+  let op=ST.operadores.find(o=>chqNormalize(o.nombre_canonico)===norm);
+  if(op) return op;
+  const al=ST.operadorAlias.find(a=>chqNormalize(a.alias)===norm);
+  return al ? (ST.operadores.find(o=>o.id===al.operador_id)||null) : null;
+}
+function getUltimoChequeoPrevio(busId){
+  const list=ST.chequeos.filter(c=>c.bus_id===busId).sort((a,b)=>b.fecha.localeCompare(a.fecha)||(b.ts||0)-(a.ts||0));
+  return list[0]||null;
+}
+
+// ─── RENDER ──────────────────────────────────────────────────────────────────
+function render(){
+  document.getElementById('root').innerHTML = ST.auth ? renderApp() : renderLogin();
+  document.querySelectorAll('.toast').forEach(t=>t.remove());
+  if(ST.toast){ const t=document.createElement('div'); t.className='toast'+(ST.toastType==='error'?' error':''); t.textContent=ST.toast; document.body.appendChild(t); }
+}
+function showToast(msg,type='success'){ ST.toast=msg; ST.toastType=type; render(); setTimeout(()=>{ ST.toast=null; ST.toastType=null; document.querySelectorAll('.toast').forEach(e=>e.remove()); },2500); }
+
+function renderLogin(){
+  return `<div class="login-wrap"><div class="login-box">
+    <div style="margin-bottom:1.75rem">
+      <h1>Chequeo Rápido</h1>
+      <p class="sub">Grupo ATE · Ingresa con tu correo y contraseña</p>
+    </div>
+    <div class="form-row"><label>Correo electrónico</label>
+      <input type="email" id="login-email" placeholder="correo@autobusesate.com" autocomplete="username" autofocus>
+    </div>
+    <div class="form-row"><label>Contraseña</label>
+      <input type="password" id="login-pw" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <div class="err">${ST.loginErr}</div>
+    <button class="btn primary full" onclick="doLogin()" style="margin-top:4px" ${ST.saving?'disabled':''}>
+      ${ST.saving?'<span class="spinner"></span>Verificando...':'Entrar'}
+    </button>
+  </div></div>`;
+}
+async function doLogin(){
+  const email=(document.getElementById('login-email')?.value||'').trim();
+  const pw=document.getElementById('login-pw')?.value||'';
+  if(!email||!pw) return;
+  ST.saving=true; ST.loginErr=''; render();
+  const {data,error}=await sb.auth.signInWithPassword({email,password:pw});
+  if(error){ ST.loginErr='Correo o contraseña incorrectos'; ST.saving=false; render(); return; }
+  const city=data.user?.user_metadata?.city;
+  if(!city){ ST.loginErr='Usuario sin ciudad asignada. Contacta al administrador.'; ST.saving=false; render(); return; }
+  ST.auth=city; ST.authEmail=data.user?.email||null; ST.saving=false;
+  const {error:loadErr}=await loadData();
+  if(loadErr){ ST.loginErr='Error al cargar datos. Intenta de nuevo.'; ST.auth=null; ST.saving=false; render(); return; }
+  consumeDeepLink();
+  render();
+}
+async function doLogout(){
+  await sb.auth.signOut();
+  ST.auth=null; ST.authEmail=null; ST.buses=[]; ST.bases=[]; ST.operadores=[]; ST.operadorAlias=[]; ST.chequeos=[];
+  ST.view='picker'; ST.pickerQuery='';
+  render();
+}
+
+function renderApp(){
+  let h=`<div class="chq-hdr">
+    <h1>Chequeo Rápido</h1>
+    ${ST.auth!=='admin'?`<span class="city-badge">${ST.auth.split(',').map(c=>CITIES[c]).filter(Boolean).join(' · ')}</span>`:''}
+    <button class="btn sm ghost" onclick="doLogout()">Salir</button>
+  </div>`;
+  if(ST.view==='capture') h+=renderCapture();
+  else if(ST.view==='success') h+=renderSuccess();
+  else h+=renderPicker();
+  return h;
+}
+
+function renderPicker(){
+  const q=chqNormalize(ST.pickerQuery);
+  const all=cityBuses().slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const list=q?all.filter(b=>chqNormalize(b.name).includes(q)||chqNormalize(b.client).includes(q)):all;
+  let h=`<input type="text" class="chq-search" placeholder="Buscar unidad por nombre o cliente…" value="${escHtml(ST.pickerQuery)}" oninput="ST.pickerQuery=this.value;render()" autofocus>`;
+  if(!list.length){
+    h+=`<div class="empty-state">${all.length?'Sin resultados para tu búsqueda':'No hay unidades disponibles'}</div>`;
+    return h;
+  }
+  list.forEach(b=>{
+    h+=`<div class="chq-unit-row" onclick="openCapture('${b.id}')">
+      <div><div class="cun">${escHtml(b.name)}</div><div class="cum">${escHtml(b.client)}${ST.auth==='admin'?' · '+(CITIES[b.city]||b.city):''}</div></div>
+      <span style="color:var(--text3);font-size:18px">→</span>
+    </div>`;
+  });
+  return h;
+}
+
+function openCapture(busId){
+  const prev=getUltimoChequeoPrevio(busId);
+  ST.chqBusId=busId;
+  ST.chqId=uid();
+  // ST.chqBase NO se resetea aquí a propósito: en una base física, el mismo
+  // staff hace varios chequeos seguidos sin cambiar de base — mantenerlo
+  // preseleccionado ahorra un tap por unidad.
+  ST.chqPhotos={}; ST.chqPhotoPreviews={}; ST.chqUploadProgress={};
+  ST.chqPrevPins=prev?.marcas_acumuladas||[];
+  ST.chqPins=[]; ST.chqPinDraft=null;
+  ST.chqOperadorText=''; ST.chqOperadorMatches=[]; ST.chqOperadorResolvedId=null; ST.chqOperadorConfirmingAlias=null;
+  ST.chqErr='';
+  ST.view='capture';
+  render();
+}
+
+function renderCapture(){
+  const bus=ST.buses.find(b=>b.id===ST.chqBusId);
+  if(!bus){ ST.view='picker'; return renderPicker(); }
+  let h=`<div class="card"><div class="section-hdr" style="margin-bottom:0.75rem">
+    <h4>${escHtml(bus.name)}</h4>
+    <button class="btn sm ghost" onclick="ST.view='picker';render()">← Otra unidad</button>
+  </div>
+  <div class="form-row" style="max-width:280px;margin:0"><label>Base *</label>
+    <select onchange="ST.chqBase=this.value;render()">
+      <option value="">— Selecciona base —</option>
+      ${ST.bases.map(b=>`<option value="${b.id}"${ST.chqBase===b.id?' selected':''}>${escHtml(b.nombre)}</option>`).join('')}
+    </select>
+  </div></div>`;
+
+  h+=`<div class="card"><h4 style="margin-bottom:0.75rem">Fotos</h4>${renderChqPhotoSlots()}</div>`;
+
+  h+=`<div class="card"><h4 style="margin-bottom:0.75rem">Diagrama — marca solo daño nuevo</h4>
+    ${renderChqDiagram(ST.chqPrevPins, ST.chqPins, true)}
+    ${renderChqPinForm()}
+  </div>`;
+
+  h+=`<div class="card">${renderChqOperadorField()}</div>`;
+
+  h+=`<div class="card"><div class="form-row"><label>Notas (opcional)</label>
+    <textarea id="chq-notas" rows="2" placeholder="Observaciones adicionales…"></textarea></div>
+    ${ST.chqErr?`<div class="modal-err">${ST.chqErr}</div>`:''}
+    <div style="display:flex;justify-content:flex-end;margin-top:0.75rem">
+      <button class="btn primary" onclick="doSaveChequeo()" ${ST.saving?'disabled':''}>
+        ${ST.saving?'<span class="spinner"></span>Guardando...':'Guardar chequeo'}
+      </button>
+    </div>
+  </div>`;
+  return h;
+}
+
+// ─── DIAGRAMA (interactivo) ───────────────────────────────────────────────────
+function renderChqDiagram(prevPins, pins, interactive){
+  prevPins=prevPins||[]; pins=pins||[];
+  // El onclick va en el propio <svg> (no en un <rect fill="transparent">
+  // superpuesto): un fill totalmente transparente no siempre cuenta como
+  // "pintado" para hit-testing en algunos navegadores móviles.
+  let h=`<div class="chq-diagram-wrap"><svg viewBox="0 0 ${CHQ_DIAGRAM_W} ${CHQ_DIAGRAM_H}" style="width:100%;display:block${interactive?';cursor:crosshair':''}" ${interactive?'onclick="chqDiagramTap(event)"':''}>
+    <rect x="0" y="0" width="${CHQ_DIAGRAM_W}" height="${CHQ_DIAGRAM_H}" fill="var(--bg3)" pointer-events="all"/>
+    <text x="57" y="18" text-anchor="middle" font-size="11" font-weight="600" fill="var(--text3)" font-family="-apple-system,sans-serif">FRENTE</text>
+    <text x="343" y="18" text-anchor="middle" font-size="11" font-weight="600" fill="var(--text3)" font-family="-apple-system,sans-serif">TRASERA</text>
+    <rect x="70" y="27" width="26" height="9" rx="3" fill="var(--text3)"/>
+    <rect x="304" y="27" width="26" height="9" rx="3" fill="var(--text3)"/>
+    <rect x="70" y="134" width="26" height="9" rx="3" fill="var(--text3)"/>
+    <rect x="304" y="134" width="26" height="9" rx="3" fill="var(--text3)"/>
+    <rect x="25" y="35" width="355" height="100" rx="26" fill="var(--bg)" stroke="var(--border2)" stroke-width="1.5"/>
+    <rect x="18" y="43" width="10" height="7" rx="2" fill="var(--border2)"/>
+    <rect x="18" y="120" width="10" height="7" rx="2" fill="var(--border2)"/>
+    <rect x="34" y="43" width="36" height="84" fill="var(--bg2)"/>
+    ${[100,133,166,199,232,265,298,331].map(x=>`<rect x="${x}" y="43" width="24" height="17" rx="3" fill="var(--bg2)"/><rect x="${x}" y="110" width="24" height="17" rx="3" fill="var(--bg2)"/>`).join('')}
+    <rect x="120" y="127" width="4" height="8" fill="var(--border2)"/>
+  `;
+  if(interactive && ST.chqPinDraft){
+    const cx=ST.chqPinDraft.x/100*CHQ_DIAGRAM_W, cy=ST.chqPinDraft.y/100*CHQ_DIAGRAM_H;
+    h+=`<circle cx="${cx}" cy="${cy}" r="7" fill="none" stroke="var(--blue)" stroke-width="2" stroke-dasharray="3 2"/>`;
+  }
+  prevPins.forEach(p=>{
+    const cx=p.x/100*CHQ_DIAGRAM_W, cy=p.y/100*CHQ_DIAGRAM_H;
+    h+=`<g class="chq-pin locked"><title>${escHtml(p.descripcion)} (previo)</title>
+      <circle cx="${cx}" cy="${cy}" r="7" fill="var(--text3)" opacity="0.6" stroke="var(--bg)" stroke-width="1.5"/>
+    </g>`;
+  });
+  pins.forEach(p=>{
+    const cx=p.x/100*CHQ_DIAGRAM_W, cy=p.y/100*CHQ_DIAGRAM_H;
+    const fill=p.severidad==='seguridad'?'var(--red)':'var(--amber)';
+    const click=interactive?`onclick="event.stopPropagation();chqRemovePin('${p.id}')"`:'';
+    h+=`<g class="chq-pin" ${click}><title>${escHtml(p.descripcion)}${interactive?' (tap para quitar)':''}</title>
+      <circle cx="${cx}" cy="${cy}" r="8" fill="${fill}" stroke="var(--bg)" stroke-width="1.5"/>
+    </g>`;
+  });
+  h+=`</svg></div>`;
+  h+=`<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;font-size:11px;color:var(--text2);margin-top:0.5rem">
+    <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:50%;background:var(--text3);opacity:0.6;flex-shrink:0;display:inline-block"></span>Daño ya reportado</span>
+    <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:50%;background:var(--amber);flex-shrink:0;display:inline-block"></span>Nuevo · Cosmético</span>
+    <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:50%;background:var(--red);flex-shrink:0;display:inline-block"></span>Nuevo · Seguridad</span>
+  </div>`;
+  return h;
+}
+function chqDiagramTap(e){
+  const svg=e.currentTarget.closest('svg');
+  const rect=svg.getBoundingClientRect();
+  const x=Math.max(0,Math.min(100,(e.clientX-rect.left)/rect.width*100));
+  const y=Math.max(0,Math.min(100,(e.clientY-rect.top)/rect.height*100));
+  ST.chqPinDraft={x:Math.round(x*10)/10, y:Math.round(y*10)/10, descripcion:'', severidad:'cosmetico'};
+  render();
+}
+function chqRemovePin(id){
+  ST.chqPins=ST.chqPins.filter(p=>p.id!==id);
+  render();
+}
+function chqCancelPinDraft(){ ST.chqPinDraft=null; render(); }
+function chqSavePinDraft(){
+  const desc=(document.getElementById('chq-pin-desc')?.value||'').trim();
+  if(!desc){ showToast('Describe brevemente el daño.','error'); return; }
+  const sev=document.getElementById('chq-pin-sev')?.value||'cosmetico';
+  ST.chqPins.push({id:uid(), x:ST.chqPinDraft.x, y:ST.chqPinDraft.y, descripcion:desc, severidad:sev});
+  ST.chqPinDraft=null;
+  render();
+}
+function renderChqPinForm(){
+  if(!ST.chqPinDraft) return '';
+  return `<div class="card" style="margin-top:10px">
+    <h4 style="margin-bottom:0.75rem">Nueva marca</h4>
+    <div class="form-row"><label>Descripción breve *</label>
+      <input type="text" id="chq-pin-desc" placeholder="Ej: Rayón en puerta lateral" autofocus></div>
+    <div class="form-row"><label>Severidad</label>
+      <select id="chq-pin-sev">
+        <option value="cosmetico">Cosmético</option>
+        <option value="seguridad">Seguridad</option>
+      </select></div>
+    <div class="modal-btns">
+      <button class="btn" onclick="chqCancelPinDraft()">Cancelar</button>
+      <button class="btn primary" onclick="chqSavePinDraft()">Agregar marca</button>
+    </div>
+  </div>`;
+}
+
+// ─── FOTOS ───────────────────────────────────────────────────────────────────
+function renderChqPhotoSlots(){
+  return `<div class="chq-photo-grid">${CHQ_SLOTS.map(slot=>{
+    const status=ST.chqUploadProgress[slot];
+    const preview=ST.chqPhotoPreviews[slot];
+    return `<div class="chq-photo-slot${status==='done'?' done':''}">
+      <input type="file" accept="image/*" capture="environment" onchange="chqPhotoSelected('${slot}',this.files[0])">
+      ${preview?`<img src="${preview}">`:`<div style="height:80px;display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:22px;margin-bottom:4px">+</div>`}
+      <div class="cps-lbl">${CHQ_SLOT_LABELS[slot]}${status==='uploading'?' · subiendo…':status==='done'?' ✓':status==='error'?' · error':''}</div>
+    </div>`;
+  }).join('')}</div>`;
+}
+async function chqPhotoSelected(slot, file){
+  if(!file) return;
+  ST.chqPhotoPreviews[slot]=URL.createObjectURL(file);
+  ST.chqUploadProgress[slot]='uploading';
+  ST.chqPhotos[slot]=null;
+  render();
+  const {path,error}=await dbUploadChequeoPhoto(ST.chqId, slot, file);
+  if(error){ ST.chqUploadProgress[slot]='error'; showToast('Error al subir la foto. Intenta de nuevo.','error'); render(); return; }
+  ST.chqPhotos[slot]=path;
+  ST.chqUploadProgress[slot]='done';
+  render();
+}
+
+// ─── AUTOCOMPLETE DE OPERADOR ─────────────────────────────────────────────────
+// chqOperadorInput no llama a render(): el input está controlado (oninput)
+// para dar sugerencias en vivo, y un render() completo reconstruiría el árbol
+// y le quitaría el foco al usuario a media palabra.
+function chqOperadorInput(text){
+  ST.chqOperadorText=text;
+  ST.chqOperadorResolvedId=null;
+  ST.chqOperadorConfirmingAlias=null;
+  const exact=chqFindExactOperador(text);
+  if(exact){ ST.chqOperadorResolvedId=exact.id; ST.chqOperadorMatches=[]; }
+  else { ST.chqOperadorMatches = text.trim().length>=2 ? fuzzyMatchOperador(text) : []; }
+  const el=document.getElementById('chq-op-suggestions');
+  if(el) el.innerHTML=renderChqOperadorSuggestionsInner();
+}
+function chqPickOperador(id){
+  const typed=(ST.chqOperadorText||'').trim();
+  const op=ST.operadores.find(o=>o.id===id);
+  const alreadyKnown = typed && (chqNormalize(op?.nombre_canonico)===chqNormalize(typed) ||
+    ST.operadorAlias.some(a=>a.operador_id===id && chqNormalize(a.alias)===chqNormalize(typed)));
+  ST.chqOperadorResolvedId=id;
+  ST.chqOperadorMatches=[];
+  ST.chqOperadorConfirmingAlias=(!alreadyKnown && typed) ? {alias:typed, operadorId:id} : null;
+  render();
+}
+async function chqCreateOperador(){
+  const text=(ST.chqOperadorText||'').trim();
+  if(!text) return;
+  const op={id:uid(), nombre_canonico:text};
+  ST.operadores.push(op);
+  ST.chqOperadorMatches=[]; ST.chqOperadorResolvedId=op.id;
+  // ST.saving bloquea "Guardar chequeo" mientras el operador nuevo termina de
+  // persistirse, para no insertar un chequeo con un operador_id que todavía
+  // no existe en la base de datos.
+  ST.saving=true; render();
+  const {error}=await dbSaveOperador(op);
+  ST.saving=false;
+  if(error){ ST.operadores=ST.operadores.filter(o=>o.id!==op.id); ST.chqOperadorResolvedId=null; showToast('Error al crear operador.','error'); render(); }
+  else render();
+}
+async function chqConfirmAlias(){
+  if(!ST.chqOperadorConfirmingAlias) return;
+  const {alias,operadorId}=ST.chqOperadorConfirmingAlias;
+  const aliasRow={id:uid(), operador_id:operadorId, alias};
+  ST.operadorAlias.push(aliasRow);
+  ST.chqOperadorConfirmingAlias=null;
+  render();
+  const {error}=await dbSaveOperadorAlias(aliasRow);
+  if(error){ ST.operadorAlias=ST.operadorAlias.filter(a=>a.id!==aliasRow.id); showToast('Error al guardar alias.','error'); render(); }
+}
+function chqDeclineAlias(){ ST.chqOperadorConfirmingAlias=null; render(); }
+function renderChqOperadorSuggestionsInner(){
+  if(ST.chqOperadorResolvedId){
+    const op=ST.operadores.find(o=>o.id===ST.chqOperadorResolvedId);
+    let h=`<div style="font-size:12px;color:var(--green-dark);margin-top:4px">✓ Operador reconocido: ${escHtml(op?.nombre_canonico)}</div>`;
+    if(ST.chqOperadorConfirmingAlias){
+      h+=`<div class="alert-bar" style="margin-top:6px">¿Guardar "${escHtml(ST.chqOperadorConfirmingAlias.alias)}" como alias de ${escHtml(op?.nombre_canonico)}?
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button class="btn sm" onclick="chqDeclineAlias()">No</button>
+          <button class="btn sm primary" onclick="chqConfirmAlias()">Sí, guardar</button>
+        </div></div>`;
+    }
+    return h;
+  }
+  if(ST.chqOperadorMatches.length){
+    return `<div class="chq-op-sugg">
+      ${ST.chqOperadorMatches.map(m=>`<div class="chq-op-sugg-item" onclick="chqPickOperador('${m.operadorId}')">¿Es ${escHtml(m.label)}?</div>`).join('')}
+      <div class="chq-op-sugg-item" style="color:var(--text2)" onclick="chqCreateOperador()">+ Ninguno, crear operador nuevo</div>
+    </div>`;
+  }
+  if((ST.chqOperadorText||'').trim().length>=2){
+    return `<div style="font-size:12px;color:var(--text3);margin-top:4px">Sin coincidencias — se registrará como operador nuevo al guardar.</div>`;
+  }
+  return '';
+}
+function renderChqOperadorField(){
+  return `<div class="form-row">
+    <label>Operador / Conductor *</label>
+    <input type="text" id="chq-operador-input" value="${escHtml(ST.chqOperadorText)}" oninput="chqOperadorInput(this.value)" placeholder="Nombre del operador" autocomplete="off">
+    <div id="chq-op-suggestions">${renderChqOperadorSuggestionsInner()}</div>
+  </div>`;
+}
+
+// ─── GUARDAR ─────────────────────────────────────────────────────────────────
+async function doSaveChequeo(){
+  if(ST.saving) return;
+  const bus=ST.buses.find(b=>b.id===ST.chqBusId);
+  if(!bus) return;
+  if(!ST.chqBase){ ST.chqErr='Selecciona la base.'; render(); return; }
+  const missingPhoto=CHQ_SLOTS.find(s=>!ST.chqPhotos[s]);
+  if(missingPhoto){ ST.chqErr=`Falta la foto: ${CHQ_SLOT_LABELS[missingPhoto]}.`; render(); return; }
+  if(Object.values(ST.chqUploadProgress).some(s=>s==='uploading')){ ST.chqErr='Espera a que terminen de subir las fotos.'; render(); return; }
+  const operadorTexto=(document.getElementById('chq-operador-input')?.value||ST.chqOperadorText||'').trim();
+  if(!operadorTexto){ ST.chqErr='El operador/conductor es obligatorio.'; render(); return; }
+  ST.chqErr='';
+
+  const prev=getUltimoChequeoPrevio(ST.chqBusId);
+  const marcasNuevas=ST.chqPins;
+  const marcasAcumuladas=[...(prev?.marcas_acumuladas||[]), ...marcasNuevas];
+  const danoNuevo=marcasNuevas.length>0;
+  const severidadMaxima=marcasNuevas.some(p=>p.severidad==='seguridad')?'seguridad':(marcasNuevas.length?'cosmetico':null);
+
+  const chq={
+    id:ST.chqId,
+    bus_id:ST.chqBusId,
+    base_id:ST.chqBase,
+    operador_id:ST.chqOperadorResolvedId||null,
+    operador_texto:operadorTexto,
+    usuario_email:ST.authEmail||null,
+    fecha:today(),
+    ts:Date.now(),
+    fotos:{...ST.chqPhotos},
+    marcas_nuevas:marcasNuevas,
+    marcas_acumuladas:marcasAcumuladas,
+    chequeo_anterior_id:prev?.id||null,
+    dano_nuevo_detectado:danoNuevo,
+    severidad_maxima:severidadMaxima,
+    alerta_atendida:false,
+    notas:(document.getElementById('chq-notas')?.value||'').trim()
+  };
+  ST.chequeos.unshift(chq);
+  ST.saving=true; render();
+  const {error}=await dbSaveChequeo(chq);
+  if(error){
+    ST.chequeos=ST.chequeos.filter(c=>c.id!==chq.id);
+    ST.saving=false; ST.chqErr='Error al guardar. Intenta de nuevo.'; render(); return;
+  }
+  ST.saving=false;
+  ST.chqLastResult={busName:bus.name, danoNuevo, severidadMaxima};
+  ST.view='success';
+  render();
+}
+
+function renderSuccess(){
+  const r=ST.chqLastResult||{};
+  const ok=!r.danoNuevo;
+  return `<div class="chq-success">
+    <div class="ico">${ok?'✓':'⚠'}</div>
+    <h3 style="margin-bottom:0.5rem">Chequeo guardado</h3>
+    <p style="color:var(--text2);font-size:13px;margin-bottom:1.5rem">${escHtml(r.busName)}${ok?' — sin daño nuevo detectado':` — daño nuevo detectado (${r.severidadMaxima==='seguridad'?'seguridad':'cosmético'})`}</p>
+    <button class="btn primary" onclick="ST.view='picker';ST.pickerQuery='';render()">Elegir otra unidad</button>
+  </div>`;
+}
+
+// misma tecla Enter que el resto de la flota: envía el login con la contraseña
+document.addEventListener('keydown', e=>{ if(e.key==='Enter'&&!ST.auth){ doLogin(); } });
+
+init();
+</script>
+</body>
+</html>

@@ -5,46 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Grupo ATE — Control de Flota</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<link rel="stylesheet" href="shared.css">
 <style>
-*{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#ffffff;--bg2:#f7f7f5;--bg3:#f0f0ec;
-  --text:#1a1a1a;--text2:#666;--text3:#999;
-  --border:rgba(0,0,0,0.12);--border2:rgba(0,0,0,0.22);
-  --blue:#378ADD;--blue-dark:#185FA5;--blue-bg:#E6F1FB;
-  --green:#639922;--green-bg:#EAF3DE;--green-dark:#27500A;
-  --amber:#EF9F27;--amber-bg:#FAEEDA;--amber-dark:#633806;
-  --red:#E24B4A;--red-bg:#FCEBEB;--red-dark:#791F1F;
-  --radius:8px;--radius-lg:12px;
-}
-@media(prefers-color-scheme:dark){
-  :root{
-    --bg:#1e1e1c;--bg2:#2a2a28;--bg3:#323230;
-    --text:#f0f0ec;--text2:#aaa;--text3:#666;
-    --border:rgba(255,255,255,0.12);--border2:rgba(255,255,255,0.22);
-    --blue-bg:#0c2a42;--green-bg:#1a2d0a;--amber-bg:#2d1f06;--red-bg:#2d0f0f;
-  }
-}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg3);color:var(--text);font-size:14px;min-height:100vh}
-.wrap{max-width:960px;margin:0 auto;padding:1rem}
-button,input,select,textarea{font-family:inherit;font-size:13px}
-input,select,textarea{background:var(--bg);color:var(--text);border:0.5px solid var(--border2);border-radius:var(--radius);padding:8px 11px;width:100%}
-input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(55,138,221,0.15)}
-label{font-size:12px;color:var(--text2);display:block;margin-bottom:4px}
-.btn{padding:8px 16px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);cursor:pointer;font-weight:500;white-space:nowrap}
-.btn:hover{background:var(--bg2)}.btn:active{transform:scale(0.98)}
-.btn.primary{background:var(--blue);color:#fff;border-color:var(--blue-dark)}
-.btn.primary:hover{background:var(--blue-dark)}
-.btn.danger{color:var(--red-dark);border-color:rgba(226,75,74,0.4)}
-.btn.danger:hover{background:var(--red-bg)}
-.btn.ghost{border-color:transparent;color:var(--text2)}
-.btn.ghost:hover{background:var(--bg2);border-color:var(--border)}
-.btn.sm{padding:5px 11px;font-size:12px}
-.btn.full{width:100%}
-.card{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:1.25rem;margin-bottom:12px}
-.nav{display:flex;align-items:center;gap:10px;padding:1rem 0 0.75rem;margin-bottom:1.25rem;border-bottom:0.5px solid var(--border);flex-wrap:wrap}
-.nav-brand{font-size:15px;font-weight:600;flex:1;min-width:100px;color:var(--text)}
-.city-badge{font-size:12px;padding:4px 10px;border-radius:var(--radius);background:var(--bg2);color:var(--text2);border:0.5px solid var(--border)}
 .fleet-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-bottom:1.25rem}
 .bus-chip{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:10px 14px;cursor:pointer;transition:border-color 0.12s}
 .bus-chip:hover{border-color:var(--border2)}
@@ -76,15 +39,9 @@ label{font-size:12px;color:var(--text2);display:block;margin-bottom:4px}
 .li-cost{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap}
 .li-cost.zero{font-weight:400;color:var(--text3);font-size:12px}
 .alert-bar{background:var(--amber-bg);border:0.5px solid var(--amber);border-radius:var(--radius);padding:9px 13px;font-size:12px;color:var(--amber-dark);margin-bottom:1rem;line-height:1.6}
-.section-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem}
 .stat-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:0.5px solid var(--border);font-size:13px}
 .stat-row:last-of-type{border-bottom:none}
 .stat-lbl{font-size:12px;color:var(--text2)}
-.pill{display:inline-block;font-size:11px;padding:2px 9px;border-radius:99px;font-weight:600}
-.pill-good{background:var(--green-bg);color:var(--green-dark)}
-.pill-mid{background:var(--amber-bg);color:var(--amber-dark)}
-.pill-worn{background:var(--red-bg);color:var(--red-dark)}
-.pill-empty{background:var(--bg2);color:var(--text3)}
 .tire-wrap{max-width:230px;margin:0 auto 0.75rem}
 .tp-btn{cursor:pointer}.tp-btn:hover rect{opacity:0.8}
 .hist-entry{font-size:12px;padding:5px 0;border-bottom:0.5px solid var(--border);color:var(--text2);line-height:1.5}
@@ -94,29 +51,6 @@ label{font-size:12px;color:var(--text2);display:block;margin-bottom:4px}
 .bar-lbl{display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px;color:var(--text)}
 .bar-track{height:6px;background:var(--bg2);border-radius:99px;overflow:hidden}
 .bar-fill{height:100%;border-radius:99px}
-.modal-wrap{background:rgba(0,0,0,0.4);border-radius:var(--radius-lg);padding:1.5rem;margin-top:1rem;display:flex;justify-content:center;align-items:flex-start}
-.modal{background:var(--bg);border:0.5px solid var(--border2);border-radius:var(--radius-lg);padding:1.5rem;width:100%;max-width:460px}
-.modal h3{margin-bottom:1rem;font-size:15px;font-weight:600}
-.modal-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:1.25rem}
-.form-row{margin-bottom:11px}
-.fg2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.fg3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
-.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1rem}
-.login-box{width:100%;max-width:360px}
-.login-box h1{font-size:22px;font-weight:700;margin-bottom:4px}
-.login-box .sub{font-size:13px;color:var(--text2);margin-bottom:1.75rem;line-height:1.5}
-.err{font-size:12px;color:var(--red-dark);margin-top:6px;min-height:18px}
-.spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;margin-right:6px}
-@keyframes spin{to{transform:rotate(360deg)}}
-.empty-state{text-align:center;padding:2.5rem 1rem;color:var(--text3);font-size:13px}
-.filter-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:0.75rem}
-.filter-btn{padding:4px 11px;font-size:12px;border:0.5px solid var(--border);border-radius:99px;background:transparent;color:var(--text2);cursor:pointer;font-weight:500}
-.filter-btn.active{background:var(--bg2);color:var(--text);border-color:var(--border2)}
-.loading-screen{display:flex;align-items:center;justify-content:center;min-height:200px;color:var(--text2);font-size:13px;gap:8px}
-.toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:var(--green);color:#fff;padding:10px 22px;border-radius:var(--radius);font-size:13px;font-weight:500;z-index:999;pointer-events:none;box-shadow:0 2px 12px rgba(0,0,0,0.18);animation:toastIn 0.2s ease}
-.toast.error{background:var(--red)}
-@keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
-.modal-err{font-size:12px;color:var(--red-dark);background:var(--red-bg);border:0.5px solid rgba(226,75,74,0.3);border-radius:var(--radius);padding:8px 11px;margin-bottom:10px}
 .rpt-filters{display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:10px;align-items:end;margin-bottom:1.25rem}
 @media(max-width:680px){.rpt-filters{grid-template-columns:1fr 1fr}}
 .rpt-kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:1rem}
@@ -216,19 +150,55 @@ const POS_NAMES = {
   RRL:'Trasera der. interior',RRR:'Trasera der. exterior',
 };
 
+// ─── MINI-CHEQUEOS: config ───────────────────────────────────────────────────
+const CHQ_SLOTS = ['frontal','trasera','lateral_izq','lateral_der','parabrisas','llantas'];
+const CHQ_SLOT_LABELS = {frontal:'Frontal',trasera:'Trasera',lateral_izq:'Lateral izquierdo',lateral_der:'Lateral derecho',parabrisas:'Parabrisas',llantas:'Llantas'};
+// Zonas rectangulares (% del viewBox del diagrama, vista de planta/desde arriba
+// de un camión: el frente queda a la izquierda del dibujo (x bajo), la trasera
+// a la derecha (x alto), el costado de arriba es lateral_izq y el de abajo es
+// lateral_der) usadas solo para clasificar un pin {x,y} en una de las 6 zonas
+// para el buscador "última foto sin X". No cubren el 100% del rectángulo a
+// propósito (el centro del cuerpo no pertenece a ninguna zona de foto) —
+// puntos ahí simplemente no clasifican (chqZoneFor regresa null).
+const CHQ_ZONES = [
+  {id:'frontal',      x:0,  y:0,  w:14, h:100},
+  {id:'trasera',      x:86, y:0,  w:14, h:100},
+  {id:'parabrisas',   x:14, y:30, w:16, h:40},
+  {id:'llantas',      x:70, y:30, w:16, h:40},
+  {id:'lateral_izq',  x:14, y:0,  w:72, h:30},
+  {id:'lateral_der',  x:14, y:70, w:72, h:30},
+];
+function chqZoneFor(pt){
+  const z=CHQ_ZONES.find(z=>pt.x>=z.x&&pt.x<=z.x+z.w&&pt.y>=z.y&&pt.y<=z.y+z.h);
+  return z?z.id:null;
+}
+function sevPill(sev){ return sev==='seguridad'?'pill-worn':sev==='cosmetico'?'pill-mid':'pill-empty'; }
+
 // ─── STATE ───────────────────────────────────────────────────────────────────
 let sb = null;
 let ST = {
-  auth:null, busId:null, tab:'log', selTire:null,
+  auth:null, authEmail:null, busId:null, tab:'log', selTire:null,
   modal:null, logFilter:'all', tirePrePos:null, tirePreEvent:null,
   loginErr:'', saving:false,
   adminFilter:'all', buses:[], logs:[], toast:null, toastType:null, modalErr:'',
   view:'fleet', rptBus:'all', rptType:'all', rptFrom:'', rptTo:'',
-  clView:'history', svcErrType:null, selService:null
+  clView:'history', svcErrType:null, selService:null,
+
+  // ─── Mini-Chequeos (solo lectura — la captura vive en chequeo.html) ───
+  bases:[], operadores:[], operadorAlias:[], chequeos:[],
+  chqSignedUrlCache:{},
+  chqHubTab:'alertas', chqZonaSel:null, chqZonaBusId:'all', chqOpReportOperadorId:'all',
+  chqTimelineSel:null,
+  chqQrBusId:null
 };
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
 async function init(){
+  // Red de seguridad: QRs generados antes de que el chequeo rápido se separara
+  // a su propia página (chequeo.html) todavía apuntan aquí con ?unidad=.
+  // Redirigimos de inmediato en vez de cargar toda la app de flota.
+  const qsUnidad = new URLSearchParams(location.search).get('unidad');
+  if(qsUnidad){ location.replace('chequeo.html?unidad='+encodeURIComponent(qsUnidad)); return; }
   try {
     sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       auth: { storage: window.sessionStorage, persistSession: true }
@@ -236,12 +206,15 @@ async function init(){
     const { data:{ session } } = await sb.auth.getSession();
     if(session){
       const city = session.user?.user_metadata?.city;
-      if(city){ ST.auth = city; const {error}=await loadFromSupabase(); if(error) console.error('Error cargando datos:', error); }
+      if(city){
+        ST.auth = city; ST.authEmail = session.user?.email || null;
+        const {error}=await loadFromSupabase(); if(error) console.error('Error cargando datos:', error);
+        const {error:chqErr}=await loadChequeosData(); if(chqErr) console.error('Error cargando chequeos:', chqErr);
+      }
     }
   } catch(e){ console.error('Supabase unreachable:', e); }
   render();
 }
-
 
 // ─── SUPABASE DATA LAYER ─────────────────────────────────────────────────────
 async function loadFromSupabase(){
@@ -271,8 +244,39 @@ async function dbDeleteLog(id){
 async function dbDeleteBus(id){
   if(!sb) return {error:'Sin conexión'};
   const {error:e1}=await sb.from('service_logs').delete().eq('bus_id',id);
+  const {error:e3}=await sb.from('chequeos_rapidos').delete().eq('bus_id',id);
   const {error:e2}=await sb.from('buses').delete().eq('id',id);
-  return {error:e1||e2};
+  return {error:e1||e3||e2};
+}
+
+// ─── MINI-CHEQUEOS: DATA LAYER ───────────────────────────────────────────────
+async function loadChequeosData(){
+  const [r1,r2,r3,r4]=await Promise.all([
+    sb.from('bases').select('*'),
+    sb.from('operadores').select('*'),
+    sb.from('operador_alias').select('*'),
+    sb.from('chequeos_rapidos').select('*').order('fecha',{ascending:false}),
+  ]);
+  const err=r1.error||r2.error||r3.error||r4.error;
+  if(err) return {error:err.message};
+  ST.bases=r1.data||[]; ST.operadores=r2.data||[]; ST.operadorAlias=r3.data||[]; ST.chequeos=r4.data||[];
+  return {error:null};
+}
+async function dbAttendAlerta(id){
+  if(!sb) return {error:'Sin conexión'};
+  const {error}=await sb.from('chequeos_rapidos').update({alerta_atendida:true}).eq('id',id);
+  return {error};
+}
+async function getSignedPhotoUrl(path){
+  const cached=ST.chqSignedUrlCache[path];
+  if(cached && cached.expiresAt>Date.now()+30000) return cached.url;
+  const {data,error}=await sb.storage.from('chequeos').createSignedUrl(path,3600);
+  if(error||!data) return null;
+  ST.chqSignedUrlCache[path]={url:data.signedUrl, expiresAt:Date.now()+3600*1000};
+  return data.signedUrl;
+}
+function chqNormalize(s){
+  return (s||'').toLowerCase().normalize('NFD').replace(new RegExp('[̀-ͯ]','g'),'').replace(/\s+/g,' ').trim();
 }
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
@@ -280,6 +284,7 @@ function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(
 function today(){ return new Date().toISOString().slice(0,10); }
 function fmt(n){ return Math.round(n).toLocaleString('es-MX'); }
 function mxn(n){ return '$'+Math.round(n).toLocaleString('es-MX'); }
+function escHtml(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function authCities(){ return ST.auth==='admin'?null:ST.auth.split(','); }
 function cityBuses(){ const c=authCities(); return ST.buses.filter(b=>!c||c.includes(b.city)); }
 function busLogs(id){ return ST.logs.filter(l=>(l.bus_id||l.busId)===id).sort((a,b)=>b.date.localeCompare(a.date)||(b.ts||0)-(a.ts||0)); }
@@ -401,6 +406,7 @@ function render(){
   document.getElementById('root').innerHTML = ST.auth ? renderApp() : renderLogin();
   document.querySelectorAll('.toast').forEach(t=>t.remove());
   if(ST.toast){ const t=document.createElement('div'); t.className='toast'+(ST.toastType==='error'?' error':''); t.textContent=ST.toast; document.body.appendChild(t); }
+  if(ST.modal==='chqQr') chqRenderQR();
 }
 function showToast(msg,type='success'){ ST.toast=msg; ST.toastType=type; render(); setTimeout(()=>{ ST.toast=null; ST.toastType=null; document.querySelectorAll('.toast').forEach(e=>e.remove()); },2500); }
 
@@ -432,15 +438,18 @@ async function doLogin(){
   if(error){ ST.loginErr='Correo o contraseña incorrectos'; ST.saving=false; render(); return; }
   const city=data.user?.user_metadata?.city;
   if(!city){ ST.loginErr='Usuario sin ciudad asignada. Contacta al administrador.'; ST.saving=false; render(); return; }
-  ST.auth=city; ST.saving=false;
+  ST.auth=city; ST.authEmail=data.user?.email||null; ST.saving=false;
   const {error:loadErr}=await loadFromSupabase();
   if(loadErr){ ST.loginErr='Error al cargar datos. Intenta de nuevo.'; ST.auth=null; ST.saving=false; render(); return; }
+  const {error:chqErr}=await loadChequeosData();
+  if(chqErr) console.error('Error cargando chequeos:', chqErr);
   render();
 }
 
 async function doLogout(){
   await sb.auth.signOut();
-  ST.auth=null; ST.busId=null; ST.buses=[]; ST.logs=[]; ST.adminFilter='all'; ST.view='fleet';
+  ST.auth=null; ST.authEmail=null; ST.busId=null; ST.buses=[]; ST.logs=[]; ST.adminFilter='all'; ST.view='fleet';
+  ST.bases=[]; ST.operadores=[]; ST.operadorAlias=[]; ST.chequeos=[]; ST.chqSignedUrlCache={};
   render();
 }
 
@@ -457,12 +466,16 @@ function renderApp(){
       ${Object.entries(CITIES).filter(([k])=>k!=='admin').map(([k,v])=>`<option value="${k}">${v.name}</option>`).join('')}
     </select>`:`<span class="city-badge">${ST.auth.split(',').map(c=>CITIES[c]?.name).filter(Boolean).join(' · ')}</span>`}
     <button class="btn sm${ST.view==='report'?' primary':''}" onclick="ST.view=ST.view==='report'?'fleet':'report';render()">Reportes</button>
+    <button class="btn sm${ST.view==='chequeos'?' primary':''}" onclick="ST.view=ST.view==='chequeos'?'fleet':'chequeos';ST.chqHubTab='alertas';render()">Chequeos${ST.chequeos.filter(c=>!c.alerta_atendida).length?`<span class="chq-badge">${ST.chequeos.filter(c=>!c.alerta_atendida).length}</span>`:''}</button>
+    <a class="btn sm" href="chequeo.html" target="_blank" rel="noopener">+ Chequeo rápido ↗</a>
     ${isAdmin?`<button class="btn sm" onclick="ST.modal='bus';render()">+ Unidad</button>`:''}
     <button class="btn sm ghost" onclick="doLogout()">Salir</button>
   </div>`;
 
   if(ST.view==='report'){
     h+=renderReport();
+  } else if(ST.view==='chequeos'){
+    h+=renderChqHub();
   } else {
     const shown=isAdmin&&ST.adminFilter!=='all'?buses.filter(b=>b.city===ST.adminFilter):buses;
     h+=`<div class="fleet-grid">`;
@@ -491,6 +504,7 @@ function renderApp(){
         <button class="tab${ST.tab==='tires'?' active':''}" onclick="ST.tab='tires';render()">Llantas</button>
         <button class="tab${ST.tab==='repairs'?' active':''}" onclick="ST.tab='repairs';ST.modalErr='';render()">Reparaciones</button>
         <button class="tab${ST.tab==='checklist'?' active':''}" onclick="ST.tab='checklist';ST.clView='history';ST.modalErr='';render()">Checklist</button>
+        <button class="tab${ST.tab==='chequeo'?' active':''}" onclick="ST.tab='chequeo';ST.chqTimelineSel=null;render()">Chequeos</button>
         <button class="tab${ST.tab==='log'?' active':''}" onclick="ST.tab='log';render()">Historial</button>
       </div>`;
       if(ST.tab==='status')    h+=renderStatus(bus);
@@ -498,6 +512,7 @@ function renderApp(){
       if(ST.tab==='tires')     h+=renderTires(bus);
       if(ST.tab==='repairs')   h+=renderRepairs(bus);
       if(ST.tab==='checklist') h+=renderChecklist(bus);
+      if(ST.tab==='chequeo')   h+=renderChqTab(bus);
       if(ST.tab==='log')       h+=renderLog(bus);
     }
   }
@@ -505,6 +520,7 @@ function renderApp(){
   if(ST.modal==='log'  && bus) h+=renderLogModal(bus);
   if(ST.modal==='tire' && bus) h+=renderTireModal(bus);
   if(ST.modal==='bus')         h+=renderBusModal();
+  if(ST.modal==='chqQr')       h+=renderChqQrModal();
   return h;
 }
 
@@ -690,7 +706,281 @@ function renderTireSVG(bus, interactive){
   return h;
 }
 
+// ─── MINI-CHEQUEOS: DIAGRAMA DE DAÑO ─────────────────────────────────────────
+// Vista de planta (desde arriba) de un camión: frente a la izquierda (x bajo),
+// trasera a la derecha (x alto), costado de arriba = lateral_izq, costado de
+// abajo = lateral_der. Debe quedar en sync con CHQ_ZONES si se ajustan las
+// proporciones.
+// La captura (tap interactivo para agregar marcas) vive solo en chequeo.html.
+// Aquí el diagrama siempre se dibuja en modo lectura, sobre un timeline o la
+// vista de detalle de un chequeo ya guardado.
+const CHQ_DIAGRAM_W=400, CHQ_DIAGRAM_H=170;
+function renderChqDiagram(prevPins, pins){
+  prevPins=prevPins||[]; pins=pins||[];
+  let h=`<div class="chq-diagram-wrap"><svg viewBox="0 0 ${CHQ_DIAGRAM_W} ${CHQ_DIAGRAM_H}" style="width:100%;display:block">
+    <rect x="0" y="0" width="${CHQ_DIAGRAM_W}" height="${CHQ_DIAGRAM_H}" fill="var(--bg3)"/>
+    <text x="57" y="18" text-anchor="middle" font-size="11" font-weight="600" fill="var(--text3)" font-family="-apple-system,sans-serif">FRENTE</text>
+    <text x="343" y="18" text-anchor="middle" font-size="11" font-weight="600" fill="var(--text3)" font-family="-apple-system,sans-serif">TRASERA</text>
+    <rect x="70" y="27" width="26" height="9" rx="3" fill="var(--text3)"/>
+    <rect x="304" y="27" width="26" height="9" rx="3" fill="var(--text3)"/>
+    <rect x="70" y="134" width="26" height="9" rx="3" fill="var(--text3)"/>
+    <rect x="304" y="134" width="26" height="9" rx="3" fill="var(--text3)"/>
+    <rect x="25" y="35" width="355" height="100" rx="26" fill="var(--bg)" stroke="var(--border2)" stroke-width="1.5"/>
+    <rect x="18" y="43" width="10" height="7" rx="2" fill="var(--border2)"/>
+    <rect x="18" y="120" width="10" height="7" rx="2" fill="var(--border2)"/>
+    <rect x="34" y="43" width="36" height="84" fill="var(--bg2)"/>
+    ${[100,133,166,199,232,265,298,331].map(x=>`<rect x="${x}" y="43" width="24" height="17" rx="3" fill="var(--bg2)"/><rect x="${x}" y="110" width="24" height="17" rx="3" fill="var(--bg2)"/>`).join('')}
+    <rect x="120" y="127" width="4" height="8" fill="var(--border2)"/>
+  `;
+  prevPins.forEach(p=>{
+    const cx=p.x/100*CHQ_DIAGRAM_W, cy=p.y/100*CHQ_DIAGRAM_H;
+    h+=`<g class="chq-pin locked"><title>${escHtml(p.descripcion)} (previo)</title>
+      <circle cx="${cx}" cy="${cy}" r="7" fill="var(--text3)" opacity="0.6" stroke="var(--bg)" stroke-width="1.5"/>
+    </g>`;
+  });
+  pins.forEach(p=>{
+    const cx=p.x/100*CHQ_DIAGRAM_W, cy=p.y/100*CHQ_DIAGRAM_H;
+    const fill=p.severidad==='seguridad'?'var(--red)':'var(--amber)';
+    h+=`<g class="chq-pin locked"><title>${escHtml(p.descripcion)}</title>
+      <circle cx="${cx}" cy="${cy}" r="8" fill="${fill}" stroke="var(--bg)" stroke-width="1.5"/>
+    </g>`;
+  });
+  h+=`</svg></div>`;
+  h+=`<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;font-size:11px;color:var(--text2);margin-top:0.5rem">
+    <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:50%;background:var(--text3);opacity:0.6;flex-shrink:0;display:inline-block"></span>Daño ya reportado</span>
+    <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:50%;background:var(--amber);flex-shrink:0;display:inline-block"></span>Nuevo · Cosmético</span>
+    <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:50%;background:var(--red);flex-shrink:0;display:inline-block"></span>Nuevo · Seguridad</span>
+  </div>`;
+  return h;
+}
+
+// Escape hatch fuera del ciclo de render(): las URLs firmadas son async y
+// render() construye el HTML de forma síncrona (mismo patrón puntual que
+// clToggle usa para tocar el DOM directo fuera del re-render normal).
+async function hydratePhotos(mapping){
+  await Promise.all(Object.entries(mapping||{}).map(async ([domId,path])=>{
+    if(!path) return;
+    const url=await getSignedPhotoUrl(path);
+    const el=document.getElementById(domId);
+    if(el && url) el.src=url;
+  }));
+}
+
+// ─── MINI-CHEQUEOS: QR ────────────────────────────────────────────────────────
+function renderChqQrModal(){
+  const bus=ST.buses.find(b=>b.id===ST.chqQrBusId);
+  return `<div class="modal-wrap"><div class="modal">
+    <h3>QR de chequeo — ${bus?.name||''}</h3>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:0.75rem;line-height:1.5">Pega este código en la unidad. Al escanearlo con la cámara del celular abre directo el chequeo rápido de esta unidad.</p>
+    <div id="chq-qr-target" style="display:flex;justify-content:center;padding:0.5rem 0"></div>
+    <div class="modal-btns">
+      <button class="btn" onclick="ST.modal=null;ST.chqQrBusId=null;render()">Cerrar</button>
+      <button class="btn primary" onclick="chqDownloadQR('${bus?.name||'unidad'}')">Descargar</button>
+    </div>
+  </div></div>`;
+}
+function chqRenderQR(){
+  const el=document.getElementById('chq-qr-target');
+  if(!el || !ST.chqQrBusId) return;
+  el.innerHTML='';
+  new QRCode(el, {text: location.origin+'/chequeo.html?unidad='+ST.chqQrBusId, width:220, height:220});
+}
+function chqDownloadQR(busName){
+  const canvas=document.querySelector('#chq-qr-target canvas');
+  if(!canvas) return;
+  const a=document.createElement('a');
+  a.href=canvas.toDataURL('image/png');
+  a.download=`qr_${busName.replace(/\s+/g,'_')}.png`;
+  a.click();
+}
+
+// ─── MINI-CHEQUEOS: TIMELINE POR UNIDAD ──────────────────────────────────────
+function busChequeos(id){
+  return ST.chequeos.filter(c=>c.bus_id===id).sort((a,b)=>b.fecha.localeCompare(a.fecha)||(b.ts||0)-(a.ts||0));
+}
+function renderChqTab(bus){
+  const list=busChequeos(bus.id);
+  let h=`<div class="card"><div class="section-hdr" style="margin-bottom:0.75rem">
+    <h4>Chequeos rápidos — ${bus.name}</h4>
+    <a class="btn sm primary" href="chequeo.html?unidad=${bus.id}" target="_blank" rel="noopener">+ Nuevo chequeo ↗</a>
+  </div>`;
+  if(!list.length){
+    h+=`<div class="empty-state">Sin chequeos registrados para esta unidad</div>`;
+  } else {
+    list.forEach(c=>{
+      const base=ST.bases.find(b=>b.id===c.base_id);
+      const sel=ST.chqTimelineSel===c.id;
+      h+=`<div class="cl-hist-item" style="cursor:pointer" onclick="chqToggleTimeline('${c.id}')">
+        <div style="width:8px;height:8px;border-radius:50%;background:${c.dano_nuevo_detectado?(c.severidad_maxima==='seguridad'?'var(--red)':'var(--amber)'):'var(--green)'};flex-shrink:0;margin-top:3px"></div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:500;font-size:13px">${c.fecha} &nbsp;·&nbsp; ${base?.nombre||'—'}</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:1px">${escHtml(c.operador_texto)||'—'}</div>
+        </div>
+        ${c.dano_nuevo_detectado?`<span class="pill ${sevPill(c.severidad_maxima)}" style="font-size:10px;flex-shrink:0">${c.severidad_maxima==='seguridad'?'Seguridad':'Cosmético'}</span>`:`<span class="pill pill-good" style="font-size:10px;flex-shrink:0">Sin daño</span>`}
+      </div>`;
+      if(sel) h+=renderChqDetail(c);
+    });
+  }
+  h+=`</div>`;
+  return h;
+}
+function chqToggleTimeline(id){
+  const opening=ST.chqTimelineSel!==id;
+  ST.chqTimelineSel=opening?id:null;
+  render();
+  if(opening){
+    const c=ST.chequeos.find(x=>x.id===id);
+    if(c) hydratePhotos(Object.fromEntries(CHQ_SLOTS.map(s=>[`chq-tl-photo-${c.id}-${s}`, c.fotos?.[s]])));
+  }
+}
+function renderChqDetail(c){
+  const prev=c.chequeo_anterior_id?ST.chequeos.find(x=>x.id===c.chequeo_anterior_id):null;
+  const prevBase=prev?ST.bases.find(b=>b.id===prev.base_id):null;
+  const curBase=ST.bases.find(b=>b.id===c.base_id);
+  let h=`<div style="padding:10px 0 4px 18px">
+    <div style="font-size:11px;color:var(--text2);margin-bottom:8px">Tramo: ${prevBase?.nombre||'—'} → ${curBase?.nombre||'—'}${c.usuario_email?' &nbsp;·&nbsp; registrado por '+c.usuario_email:''}</div>
+    <div class="chq-photo-grid" style="margin-bottom:10px">${CHQ_SLOTS.map(s=>`
+      <div class="chq-photo-slot done" style="cursor:default">
+        <img id="chq-tl-photo-${c.id}-${s}">
+        <div class="cps-lbl">${CHQ_SLOT_LABELS[s]}</div>
+      </div>`).join('')}</div>
+    ${renderChqDiagram(prev?.marcas_acumuladas||[], c.marcas_nuevas||[])}
+    ${c.notas?`<div style="font-size:12px;color:var(--text2);margin-top:6px">Notas: ${escHtml(c.notas)}</div>`:''}
+  </div>`;
+  return h;
+}
+
+// ─── MINI-CHEQUEOS: HUB DE OPERACIONES ───────────────────────────────────────
+function renderChqHub(){
+  let h=`<div class="tab-row">
+    <button class="tab${ST.chqHubTab==='alertas'?' active':''}" onclick="ST.chqHubTab='alertas';render()">Alertas</button>
+    <button class="tab${ST.chqHubTab==='zona'?' active':''}" onclick="ST.chqHubTab='zona';render()">Buscar por zona</button>
+    <button class="tab${ST.chqHubTab==='operador'?' active':''}" onclick="ST.chqHubTab='operador';render()">Reporte por operador</button>
+  </div>`;
+  if(ST.chqHubTab==='alertas')  h+=renderChqAlertas();
+  if(ST.chqHubTab==='zona')     h+=renderChqZonaSearch();
+  if(ST.chqHubTab==='operador') h+=renderChqOperadorReport();
+  return h;
+}
+function renderChqAlertas(){
+  const alerts=ST.chequeos.filter(c=>!c.alerta_atendida && c.dano_nuevo_detectado)
+    .sort((a,b)=>b.fecha.localeCompare(a.fecha)||(b.ts||0)-(a.ts||0));
+  if(!alerts.length) return `<div class="empty-state">Sin alertas pendientes</div>`;
+  let h='';
+  alerts.forEach(c=>{
+    const bus=ST.buses.find(b=>b.id===c.bus_id);
+    const prev=c.chequeo_anterior_id?ST.chequeos.find(x=>x.id===c.chequeo_anterior_id):null;
+    const prevBase=prev?ST.bases.find(b=>b.id===prev.base_id):null;
+    const curBase=ST.bases.find(b=>b.id===c.base_id);
+    h+=`<div class="card" style="border-color:${c.severidad_maxima==='seguridad'?'rgba(226,75,74,0.45)':'var(--border)'};margin-bottom:10px">
+      <div class="issue-item" style="padding:0">
+        <div style="flex:1">
+          <div style="font-weight:600;font-size:13px">${bus?.name||'—'} <span class="pill ${sevPill(c.severidad_maxima)}" style="font-size:10px;margin-left:4px">${c.severidad_maxima==='seguridad'?'Seguridad':'Cosmético'}</span></div>
+          <div style="font-size:12px;color:var(--text2);margin-top:2px">${c.fecha} &nbsp;·&nbsp; Operador: ${escHtml(c.operador_texto)||'—'}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Tramo: ${prevBase?.nombre||'—'} → ${curBase?.nombre||'—'}</div>
+          <div style="font-size:12px;color:var(--text);margin-top:6px">${(c.marcas_nuevas||[]).map(p=>escHtml(p.descripcion)).join(' · ')}</div>
+        </div>
+        <button class="btn sm" onclick="doAttendAlert('${c.id}')">Marcar atendida</button>
+      </div>
+    </div>`;
+  });
+  return h;
+}
+async function doAttendAlert(id){
+  const c=ST.chequeos.find(x=>x.id===id);
+  if(!c||c.alerta_atendida) return;
+  c.alerta_atendida=true;
+  render();
+  const {error}=await dbAttendAlerta(id);
+  if(error){ c.alerta_atendida=false; showToast('Error al actualizar. Intenta de nuevo.','error'); render(); }
+  else showToast('Alerta atendida');
+}
+
+function chqZoneHasDamage(chq, zona){
+  return (chq.marcas_acumuladas||[]).some(p=>chqZoneFor(p)===zona);
+}
+function renderChqZonaSearch(){
+  let h=`<div class="card" style="margin-bottom:10px"><div class="fg2">
+    <div class="form-row" style="margin:0"><label>Zona</label>
+      <select onchange="ST.chqZonaSel=this.value||null;render()">
+        <option value="">— Selecciona zona —</option>
+        ${CHQ_SLOTS.map(s=>`<option value="${s}"${ST.chqZonaSel===s?' selected':''}>${CHQ_SLOT_LABELS[s]}</option>`).join('')}
+      </select></div>
+    <div class="form-row" style="margin:0"><label>Unidad</label>
+      <select onchange="ST.chqZonaBusId=this.value;render()">
+        <option value="all">Todas las unidades</option>
+        ${ST.buses.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(b=>`<option value="${b.id}"${ST.chqZonaBusId===b.id?' selected':''}>${b.name}</option>`).join('')}
+      </select></div>
+  </div></div>`;
+  if(!ST.chqZonaSel) return h+`<div class="empty-state">Selecciona una zona para buscar</div>`;
+  const buses=ST.chqZonaBusId==='all'?ST.buses:ST.buses.filter(b=>b.id===ST.chqZonaBusId);
+  let any=false;
+  buses.forEach(b=>{
+    const list=busChequeos(b.id).slice().reverse(); // orden cronológico ascendente
+    if(!list.length) return;
+    any=true;
+    let lastClean=null;
+    list.forEach(c=>{ if(!chqZoneHasDamage(c,ST.chqZonaSel)) lastClean=c; });
+    const hasDamageNow=chqZoneHasDamage(list[list.length-1],ST.chqZonaSel);
+    h+=`<div class="card" style="margin-bottom:8px">
+      <div style="font-weight:600;font-size:13px;margin-bottom:4px">${b.name}</div>
+      ${lastClean?`<div style="font-size:12px;color:var(--text2)">Último chequeo sin daño en ${CHQ_SLOT_LABELS[ST.chqZonaSel].toLowerCase()}: <b>${lastClean.fecha}</b> (${ST.bases.find(x=>x.id===lastClean.base_id)?.nombre||'—'})</div>`
+        :`<div style="font-size:12px;color:var(--text2)">Todos los chequeos registrados muestran daño en esta zona.</div>`}
+      <div style="font-size:11px;margin-top:2px;color:${hasDamageNow?'var(--red-dark)':'var(--green-dark)'}">${hasDamageNow?'Actualmente con daño en esta zona':'Actualmente sin daño en esta zona'}</div>
+    </div>`;
+  });
+  if(!any) h+=`<div class="empty-state">Sin chequeos registrados para este filtro</div>`;
+  return h;
+}
+
+function renderChqOperadorReport(){
+  let h=`<div class="card" style="margin-bottom:10px">
+    <div class="form-row" style="max-width:320px;margin:0"><label>Operador</label>
+      <select onchange="ST.chqOpReportOperadorId=this.value;render()">
+        <option value="all">Todos los operadores</option>
+        ${ST.operadores.slice().sort((a,b)=>a.nombre_canonico.localeCompare(b.nombre_canonico)).map(o=>`<option value="${o.id}"${ST.chqOpReportOperadorId===o.id?' selected':''}>${escHtml(o.nombre_canonico)}</option>`).join('')}
+      </select></div>
+  </div>`;
+  let rows=ST.chequeos.filter(c=>c.dano_nuevo_detectado);
+  if(ST.chqOpReportOperadorId!=='all') rows=rows.filter(c=>c.operador_id===ST.chqOpReportOperadorId);
+  rows=rows.sort((a,b)=>b.fecha.localeCompare(a.fecha)||(b.ts||0)-(a.ts||0));
+
+  const byOperador={};
+  rows.forEach(c=>{
+    const key=c.operador_id||('__texto__'+chqNormalize(c.operador_texto));
+    if(!byOperador[key]) byOperador[key]={count:0};
+    byOperador[key].count++;
+  });
+
+  h+=`<div class="rpt-kpi-row" style="grid-template-columns:repeat(2,1fr)">
+    <div class="kpi"><div class="kl">Chequeos con daño nuevo</div><div class="kv">${rows.length}</div><div class="ks">en filtro actual</div></div>
+    <div class="kpi"><div class="kl">Operadores involucrados</div><div class="kv">${Object.keys(byOperador).length}</div><div class="ks">distintos</div></div>
+  </div>`;
+
+  if(!rows.length) return h+`<div class="empty-state">Sin daño nuevo registrado para este filtro</div>`;
+
+  h+=`<div class="card" style="overflow-x:auto;padding:0"><table class="rpt-table">
+    <thead><tr>
+      <th style="padding-left:1.25rem">Fecha</th><th>Unidad</th><th>Operador</th><th>Severidad</th><th>Base</th><th style="padding-right:1.25rem">Detalle</th>
+    </tr></thead><tbody>`;
+  rows.forEach(c=>{
+    const bus=ST.buses.find(b=>b.id===c.bus_id);
+    const base=ST.bases.find(b=>b.id===c.base_id);
+    h+=`<tr>
+      <td style="padding-left:1.25rem;white-space:nowrap;color:var(--text2)">${c.fecha}</td>
+      <td style="font-weight:500;white-space:nowrap">${bus?.name||'—'}</td>
+      <td style="color:var(--text2)">${escHtml(c.operador_texto)||'—'}</td>
+      <td><span class="pill ${sevPill(c.severidad_maxima)}" style="font-size:10px">${c.severidad_maxima==='seguridad'?'Seguridad':'Cosmético'}</span></td>
+      <td style="color:var(--text2);white-space:nowrap">${base?.nombre||'—'}</td>
+      <td style="color:var(--text2);padding-right:1.25rem;max-width:220px">${(c.marcas_nuevas||[]).map(p=>escHtml(p.descripcion)).join(' · ')}</td>
+    </tr>`;
+  });
+  h+=`</tbody></table></div>`;
+  return h;
+}
+
 function renderStatus(bus){
+  const isAdmin=ST.auth==='admin';
   const openIssues=(bus.open_issues||[]).filter(i=>!i.resolved);
   const svcs=applicableServices(bus);
 
@@ -739,8 +1029,10 @@ function renderStatus(bus){
   }
 
   // Vehicle quick stats
-  h+=`<div class="card">
-    <h4 style="margin-bottom:0.75rem">${bus.name}</h4>
+  h+=`<div class="card"><div class="section-hdr">
+    <h4>${bus.name}</h4>
+    ${isAdmin?`<button class="btn sm ghost" onclick="ST.modal='chqQr';ST.chqQrBusId='${bus.id}';render()">QR de chequeo</button>`:''}
+    </div>
     <div class="stat-row"><span class="stat-lbl">Cliente</span><span>${bus.client}</span></div>
     <div class="stat-row"><span class="stat-lbl">Tipo</span><span>${bus.type==='bus'?'Autobús':bus.type==='txl'?'TXL':'Urvan / Sprinter'}</span></div>
     <div class="stat-row"><span class="stat-lbl">Odómetro</span><span style="font-weight:600">${fmt(bus.km)} km</span></div>
