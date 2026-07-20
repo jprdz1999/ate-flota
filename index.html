@@ -104,6 +104,8 @@ const CITIES = {
   can: {name:'Cancún'},
   mer: {name:'Mérida'},
   qro: {name:'Querétaro'},
+  cdmx:{name:'Ciudad de México'},
+  vhs: {name:'Villahermosa'},
   admin:{name:'Admin — Todas'}
 };
 
@@ -314,7 +316,7 @@ function condFill(c){ return c==='good'?'#639922':c==='mid'?'#EF9F27':c==='worn'
 function condPill(c){ return c==='good'?'pill-good':c==='mid'?'pill-mid':c==='worn'?'pill-worn':'pill-empty'; }
 function condLabel(c){ return c==='good'?'Buena':c==='mid'?'Desgaste medio':c==='worn'?'Desgaste alto':'Sin datos'; }
 
-function oilInterval(bus){ return bus.oil_interval||(bus.type==='txl'?10000:30000); }
+function oilInterval(bus){ return bus.oil_interval||(bus.type==='bus'?30000:10000); }
 
 function applicableServices(bus){
   const svcs=[
