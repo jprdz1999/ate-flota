@@ -35,7 +35,7 @@ const CHQ_DIAGRAM_W=400, CHQ_DIAGRAM_H=170;
 // ─── STATE ───────────────────────────────────────────────────────────────────
 let sb = null;
 let ST = {
-  auth:null, authEmail:null, saving:false, loginErr:'',
+  auth:null, role:null, authEmail:null, saving:false, loginErr:'',
   buses:[], bases:[], operadores:[], operadorAlias:[], chequeos:[],
   toast:null, toastType:null,
 
@@ -58,9 +58,10 @@ async function init(){
     });
     const { data:{ session } } = await sb.auth.getSession();
     if(session){
-      const city = session.user?.user_metadata?.city;
-      if(city){
-        ST.auth = city; ST.authEmail = session.user?.email || null;
+      const role = session.user?.app_metadata?.role;
+      const cities = session.user?.app_metadata?.cities;
+      if(role && cities){
+        ST.role = role; ST.auth = cities; ST.authEmail = session.user?.email || null;
         const {error}=await loadData(); if(error) console.error('Error cargando datos:', error);
         consumeDeepLink();
       }
@@ -116,7 +117,7 @@ async function dbUploadChequeoPhoto(chequeoId, slot, file){
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function today(){ return new Date().toISOString().slice(0,10); }
 function escHtml(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function authCities(){ return ST.auth==='admin'?null:ST.auth.split(','); }
+function authCities(){ return ST.auth==='all'?null:ST.auth.split(','); }
 function cityBuses(){ const c=authCities(); return ST.buses.filter(b=>!c||c.includes(b.city)); }
 function chqNormalize(s){
   return (s||'').toLowerCase().normalize('NFD').replace(new RegExp('[̀-ͯ]','g'),'').replace(/\s+/g,' ').trim();
@@ -192,17 +193,18 @@ async function doLogin(){
   ST.saving=true; ST.loginErr=''; render();
   const {data,error}=await sb.auth.signInWithPassword({email,password:pw});
   if(error){ ST.loginErr='Correo o contraseña incorrectos'; ST.saving=false; render(); return; }
-  const city=data.user?.user_metadata?.city;
-  if(!city){ ST.loginErr='Usuario sin ciudad asignada. Contacta al administrador.'; ST.saving=false; render(); return; }
-  ST.auth=city; ST.authEmail=data.user?.email||null; ST.saving=false;
+  const role=data.user?.app_metadata?.role;
+  const cities=data.user?.app_metadata?.cities;
+  if(!role||!cities){ ST.loginErr='Usuario sin rol o ciudad asignada. Contacta al administrador.'; ST.saving=false; render(); return; }
+  ST.role=role; ST.auth=cities; ST.authEmail=data.user?.email||null; ST.saving=false;
   const {error:loadErr}=await loadData();
-  if(loadErr){ ST.loginErr='Error al cargar datos. Intenta de nuevo.'; ST.auth=null; ST.saving=false; render(); return; }
+  if(loadErr){ ST.loginErr='Error al cargar datos. Intenta de nuevo.'; ST.auth=null; ST.role=null; ST.saving=false; render(); return; }
   consumeDeepLink();
   render();
 }
 async function doLogout(){
   await sb.auth.signOut();
-  ST.auth=null; ST.authEmail=null; ST.buses=[]; ST.bases=[]; ST.operadores=[]; ST.operadorAlias=[]; ST.chequeos=[];
+  ST.auth=null; ST.role=null; ST.authEmail=null; ST.buses=[]; ST.bases=[]; ST.operadores=[]; ST.operadorAlias=[]; ST.chequeos=[];
   ST.view='picker'; ST.pickerQuery='';
   render();
 }
@@ -210,7 +212,7 @@ async function doLogout(){
 function renderApp(){
   let h=`<div class="chq-hdr">
     <h1>Chequeo Rápido</h1>
-    ${ST.auth!=='admin'?`<span class="city-badge">${ST.auth.split(',').map(c=>CITIES[c]).filter(Boolean).join(' · ')}</span>`:''}
+    ${ST.auth!=='all'?`<span class="city-badge">${ST.auth.split(',').map(c=>CITIES[c]).filter(Boolean).join(' · ')}</span>`:''}
     <button class="btn sm ghost" onclick="doLogout()">Salir</button>
   </div>`;
   if(ST.view==='capture') h+=renderCapture();
@@ -230,7 +232,7 @@ function renderPicker(){
   }
   list.forEach(b=>{
     h+=`<div class="chq-unit-row" onclick="openCapture('${b.id}')">
-      <div><div class="cun">${escHtml(b.name)}</div><div class="cum">${escHtml(b.client)}${ST.auth==='admin'?' · '+(CITIES[b.city]||b.city):''}</div></div>
+      <div><div class="cun">${escHtml(b.name)}</div><div class="cum">${escHtml(b.client)}${ST.role==='admin'?' · '+(CITIES[b.city]||b.city):''}</div></div>
       <span style="color:var(--text3);font-size:18px">→</span>
     </div>`;
   });

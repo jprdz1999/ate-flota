@@ -182,7 +182,7 @@ function sevPill(sev){ return sev==='seguridad'?'pill-worn':sev==='cosmetico'?'p
 // ─── STATE ───────────────────────────────────────────────────────────────────
 let sb = null;
 let ST = {
-  auth:null, authEmail:null, busId:null, tab:'log', selTire:null,
+  auth:null, role:null, authEmail:null, busId:null, tab:'log', selTire:null,
   modal:null, logFilter:'all', tirePrePos:null, tirePreEvent:null,
   loginErr:'', saving:false,
   adminFilter:'all', buses:[], logs:[], toast:null, toastType:null, modalErr:'',
@@ -214,9 +214,10 @@ async function init(){
     });
     const { data:{ session } } = await sb.auth.getSession();
     if(session){
-      const city = session.user?.user_metadata?.city;
-      if(city){
-        ST.auth = city; ST.authEmail = session.user?.email || null;
+      const role = session.user?.app_metadata?.role;
+      const cities = session.user?.app_metadata?.cities;
+      if(role && cities){
+        ST.role = role; ST.auth = cities; ST.authEmail = session.user?.email || null;
         const {error}=await loadFromSupabase(); if(error) console.error('Error cargando datos:', error);
         const {error:chqErr}=await loadChequeosData(); if(chqErr) console.error('Error cargando chequeos:', chqErr);
         const {error:ocErr}=await loadComprasData(); if(ocErr) console.error('Error cargando órdenes de compra:', ocErr);
@@ -308,7 +309,8 @@ function today(){ return new Date().toISOString().slice(0,10); }
 function fmt(n){ return Math.round(n).toLocaleString('es-MX'); }
 function mxn(n){ return '$'+Math.round(n).toLocaleString('es-MX'); }
 function escHtml(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function authCities(){ return ST.auth==='admin'?null:ST.auth.split(','); }
+function authCities(){ return ST.auth==='all'?null:ST.auth.split(','); }
+function adminFilterCities(){ return ST.auth==='all'?Object.keys(CITIES).filter(k=>k!=='admin'):ST.auth.split(','); }
 function cityBuses(){ const c=authCities(); return ST.buses.filter(b=>!c||c.includes(b.city)); }
 function busLogs(id){ return ST.logs.filter(l=>(l.bus_id||l.busId)===id).sort((a,b)=>b.date.localeCompare(a.date)||(b.ts||0)-(a.ts||0)); }
 function tireKM(tire,km){ return Math.max(0,km-(tire.kmAt||0)); }
@@ -459,11 +461,12 @@ async function doLogin(){
   ST.saving=true; ST.loginErr=''; render();
   const {data,error}=await sb.auth.signInWithPassword({email,password:pw});
   if(error){ ST.loginErr='Correo o contraseña incorrectos'; ST.saving=false; render(); return; }
-  const city=data.user?.user_metadata?.city;
-  if(!city){ ST.loginErr='Usuario sin ciudad asignada. Contacta al administrador.'; ST.saving=false; render(); return; }
-  ST.auth=city; ST.authEmail=data.user?.email||null; ST.saving=false;
+  const role=data.user?.app_metadata?.role;
+  const cities=data.user?.app_metadata?.cities;
+  if(!role||!cities){ ST.loginErr='Usuario sin rol o ciudad asignada. Contacta al administrador.'; ST.saving=false; render(); return; }
+  ST.role=role; ST.auth=cities; ST.authEmail=data.user?.email||null; ST.saving=false;
   const {error:loadErr}=await loadFromSupabase();
-  if(loadErr){ ST.loginErr='Error al cargar datos. Intenta de nuevo.'; ST.auth=null; ST.saving=false; render(); return; }
+  if(loadErr){ ST.loginErr='Error al cargar datos. Intenta de nuevo.'; ST.auth=null; ST.role=null; ST.saving=false; render(); return; }
   const {error:chqErr}=await loadChequeosData();
   if(chqErr) console.error('Error cargando chequeos:', chqErr);
   render();
@@ -471,7 +474,7 @@ async function doLogin(){
 
 async function doLogout(){
   await sb.auth.signOut();
-  ST.auth=null; ST.authEmail=null; ST.busId=null; ST.buses=[]; ST.logs=[]; ST.ordenes=[]; ST.adminFilter='all'; ST.view='fleet';
+  ST.auth=null; ST.role=null; ST.authEmail=null; ST.busId=null; ST.buses=[]; ST.logs=[]; ST.ordenes=[]; ST.adminFilter='all'; ST.view='fleet';
   ST.bases=[]; ST.operadores=[]; ST.operadorAlias=[]; ST.chequeos=[]; ST.chqSignedUrlCache={};
   render();
 }
@@ -479,15 +482,15 @@ async function doLogout(){
 function renderApp(){
   const buses=cityBuses();
   const bus=ST.busId?ST.buses.find(b=>b.id===ST.busId):null;
-  const isAdmin=ST.auth==='admin';
+  const isAdmin=ST.role==='admin';
 
   let h=`<div class="nav">
     <button class="btn sm ghost" onclick="ST.busId=null;ST.view='fleet';ST.modalErr='';render()" title="Inicio">⌂ Inicio</button>
     <span class="nav-brand">Grupo ATE — Flota</span>
     ${isAdmin?`<select style="width:auto" onchange="ST.adminFilter=this.value;ST.busId=null;render()">
       <option value="all">Todas las ciudades</option>
-      ${Object.entries(CITIES).filter(([k])=>k!=='admin').map(([k,v])=>`<option value="${k}">${v.name}</option>`).join('')}
-    </select>`:`<span class="city-badge">${ST.auth.split(',').map(c=>CITIES[c]?.name).filter(Boolean).join(' · ')}</span>`}
+      ${adminFilterCities().map(k=>`<option value="${k}">${CITIES[k]?.name}</option>`).join('')}
+    </select>`:`<span class="city-badge">${ST.auth==='all'?'Todas':ST.auth.split(',').map(c=>CITIES[c]?.name).filter(Boolean).join(' · ')}</span>`}
     <button class="btn sm${ST.view==='report'?' primary':''}" onclick="ST.view=ST.view==='report'?'fleet':'report';render()">Reportes</button>
     <button class="btn sm${ST.view==='chequeos'?' primary':''}" onclick="ST.view=ST.view==='chequeos'?'fleet':'chequeos';ST.chqHubTab='alertas';render()">Chequeos${ST.chequeos.filter(c=>!c.alerta_atendida).length?`<span class="chq-badge">${ST.chequeos.filter(c=>!c.alerta_atendida).length}</span>`:''}</button>
     <a class="btn sm" href="chequeo.html" target="_blank" rel="noopener">+ Chequeo rápido ↗</a>
@@ -552,7 +555,7 @@ function renderApp(){
 }
 
 function renderReport(){
-  const isAdmin=ST.auth==='admin';
+  const isAdmin=ST.role==='admin';
   const buses=cityBuses().slice().sort((a,b)=>a.name.localeCompare(b.name));
   const rows=applyReportFilters();
   const totalCost=rows.reduce((s,l)=>s+(l.cost||0),0);
@@ -638,7 +641,7 @@ function renderLog(bus){
   const kmOil=lastOil?bus.km-(lastOil.km_after||lastOil.kmAfter||0):null;
   const oilInt=oilInterval(bus), oilWarn=Math.round(oilInt*0.9);
 
-  const isAdmin=ST.auth==='admin';
+  const isAdmin=ST.role==='admin';
   let h=`<div class="two-col"><div>
   <div class="kpi-row"${!isAdmin?' style="grid-template-columns:repeat(2,1fr)"':''}>
     <div class="kpi"><div class="kl">Odómetro</div><div class="kv">${fmt(bus.km)}</div><div class="ks">km totales</div></div>
@@ -1027,7 +1030,7 @@ async function doChangeOrdenStatus(id,status){
   else showToast('Status actualizado');
 }
 function renderComprasHub(){
-  const isAdmin=ST.auth==='admin';
+  const isAdmin=ST.role==='admin';
   const buses=cityBuses().slice().sort((a,b)=>a.name.localeCompare(b.name));
   const rows=applyComprasFilters();
   const totalMonto=rows.reduce((s,o)=>s+Number(o.monto||0),0);
@@ -1138,7 +1141,7 @@ function exportComprasCSV(){
 }
 
 function renderStatus(bus){
-  const isAdmin=ST.auth==='admin';
+  const isAdmin=ST.role==='admin';
   const openIssues=(bus.open_issues||[]).filter(i=>!i.resolved);
   const svcs=applicableServices(bus);
 
@@ -1638,8 +1641,8 @@ function renderBusModal(){
         <select id="bm-client">${CLIENTS.map(c=>`<option>${c}</option>`).join('')}</select>
       </div>
       <div class="form-row"><label>Ciudad</label>
-        <select id="bm-city">${Object.entries(CITIES).filter(([k])=>k!=='admin').map(([k,v])=>
-          `<option value="${k}"${k===ST.auth&&ST.auth!=='admin'?' selected':''}>${v.name}</option>`).join('')}</select>
+        <select id="bm-city">${adminFilterCities().map(k=>
+          `<option value="${k}"${k===ST.auth?' selected':''}>${CITIES[k]?.name}</option>`).join('')}</select>
       </div>
     </div>
     <div class="form-row"><label>KM iniciales (odómetro)</label><input type="number" id="bm-km" value="0"></div>
@@ -1967,7 +1970,7 @@ async function doResolveIssue(busId,issueId){
 }
 
 function exportCSV(){
-  const isAdmin=ST.auth==='admin';
+  const isAdmin=ST.role==='admin';
   const rows=applyReportFilters();
   if(!rows.length) return;
   const typeLabels={...LOG_TYPES,tire:'Llanta'};

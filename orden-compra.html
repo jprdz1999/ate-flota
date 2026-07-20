@@ -33,7 +33,7 @@ const STATUS_PILL = {pendiente:'pill-mid', autorizada:'pill-blue', pagada:'pill-
 // ─── STATE ───────────────────────────────────────────────────────────────────
 let sb = null;
 let ST = {
-  auth:null, authEmail:null, saving:false, loginErr:'',
+  auth:null, role:null, authEmail:null, saving:false, loginErr:'',
   buses:[], bases:[],
   toast:null, toastType:null,
 
@@ -50,9 +50,10 @@ async function init(){
     });
     const { data:{ session } } = await sb.auth.getSession();
     if(session){
-      const city = session.user?.user_metadata?.city;
-      if(city){
-        ST.auth = city; ST.authEmail = session.user?.email || null;
+      const role = session.user?.app_metadata?.role;
+      const cities = session.user?.app_metadata?.cities;
+      if(role && cities){
+        ST.role = role; ST.auth = cities; ST.authEmail = session.user?.email || null;
         ST.ocSolicita = ST.authEmail || '';
         const {error}=await loadData(); if(error) console.error('Error cargando datos:', error);
       }
@@ -81,7 +82,7 @@ async function dbSaveOrder(order){
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 function escHtml(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function mxn(n){ return '$'+Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}); }
-function authCities(){ return ST.auth==='admin'?null:ST.auth.split(','); }
+function authCities(){ return ST.auth==='all'?null:ST.auth.split(','); }
 function cityBuses(){ const c=authCities(); return ST.buses.filter(b=>!c||c.includes(b.city)); }
 function fmtDateTime(iso){ return new Date(iso).toLocaleString('es-MX',{dateStyle:'medium',timeStyle:'short'}); }
 
@@ -118,16 +119,17 @@ async function doLogin(){
   ST.saving=true; ST.loginErr=''; render();
   const {data,error}=await sb.auth.signInWithPassword({email,password:pw});
   if(error){ ST.loginErr='Correo o contraseña incorrectos'; ST.saving=false; render(); return; }
-  const city=data.user?.user_metadata?.city;
-  if(!city){ ST.loginErr='Usuario sin ciudad asignada. Contacta al administrador.'; ST.saving=false; render(); return; }
-  ST.auth=city; ST.authEmail=data.user?.email||null; ST.ocSolicita=ST.authEmail||''; ST.saving=false;
+  const role=data.user?.app_metadata?.role;
+  const cities=data.user?.app_metadata?.cities;
+  if(!role||!cities){ ST.loginErr='Usuario sin rol o ciudad asignada. Contacta al administrador.'; ST.saving=false; render(); return; }
+  ST.role=role; ST.auth=cities; ST.authEmail=data.user?.email||null; ST.ocSolicita=ST.authEmail||''; ST.saving=false;
   const {error:loadErr}=await loadData();
-  if(loadErr){ ST.loginErr='Error al cargar datos. Intenta de nuevo.'; ST.auth=null; ST.saving=false; render(); return; }
+  if(loadErr){ ST.loginErr='Error al cargar datos. Intenta de nuevo.'; ST.auth=null; ST.role=null; ST.saving=false; render(); return; }
   render();
 }
 async function doLogout(){
   await sb.auth.signOut();
-  ST.auth=null; ST.authEmail=null; ST.buses=[]; ST.bases=[];
+  ST.auth=null; ST.role=null; ST.authEmail=null; ST.buses=[]; ST.bases=[];
   ST.view='form';
   render();
 }
@@ -135,7 +137,7 @@ async function doLogout(){
 function renderApp(){
   let h=`<div class="oc-hdr">
     <h1>Orden de Compra</h1>
-    ${ST.auth!=='admin'?`<span class="city-badge">${ST.auth.split(',').map(c=>CITIES[c]).filter(Boolean).join(' · ')}</span>`:''}
+    ${ST.auth!=='all'?`<span class="city-badge">${ST.auth.split(',').map(c=>CITIES[c]).filter(Boolean).join(' · ')}</span>`:''}
     <button class="btn sm ghost" onclick="doLogout()">Salir</button>
   </div>`;
   h += ST.view==='receipt' ? renderReceipt() : renderForm();
