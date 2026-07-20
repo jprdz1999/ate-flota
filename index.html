@@ -108,6 +108,9 @@ const CITIES = {
 };
 
 const CLIENTS = ['Bimbo','Barcel','Oxxo','Maersk','Sensata','Dreams Jade','Bachoco','Otro'];
+const OC_TIPOS_SERVICIO = ['Mecánica general','Llantas','Eléctrico','Hojalatería y pintura','Refacciones','Otro'];
+const OC_STATUS_LABELS = {pendiente:'Pendiente', autorizada:'Autorizada', pagada:'Pagada', rechazada:'Rechazada'};
+const OC_STATUS_PILL = {pendiente:'pill-mid', autorizada:'pill-blue', pagada:'pill-good', rechazada:'pill-worn'};
 const LOG_TYPES = {svc:'Aceite de motor', svc_trans:'Aceite de transmisión', svc_diff:'Aceite diferencial', oil:'Aceite / Preventivo', repair:'Correctivo', km:'Solo KM'};
 const REPAIR_TYPES = [
   {id:'compresor',   lbl:'Compresor'},
@@ -189,7 +192,11 @@ let ST = {
   chqSignedUrlCache:{},
   chqHubTab:'alertas', chqZonaSel:null, chqZonaBusId:'all', chqOpReportOperadorId:'all',
   chqTimelineSel:null,
-  chqQrBusId:null
+  chqQrBusId:null,
+
+  // ─── Órdenes de Compra (solo lectura/reporte — la captura vive en orden-compra.html) ───
+  ordenes:[],
+  pcBus:'all', pcTipo:'all', pcStatus:'all', pcFrom:'', pcTo:''
 };
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
@@ -210,6 +217,7 @@ async function init(){
         ST.auth = city; ST.authEmail = session.user?.email || null;
         const {error}=await loadFromSupabase(); if(error) console.error('Error cargando datos:', error);
         const {error:chqErr}=await loadChequeosData(); if(chqErr) console.error('Error cargando chequeos:', chqErr);
+        const {error:ocErr}=await loadComprasData(); if(ocErr) console.error('Error cargando órdenes de compra:', ocErr);
       }
     }
   } catch(e){ console.error('Supabase unreachable:', e); }
@@ -267,6 +275,19 @@ async function dbAttendAlerta(id){
   const {error}=await sb.from('chequeos_rapidos').update({alerta_atendida:true}).eq('id',id);
   return {error};
 }
+// ─── ÓRDENES DE COMPRA: DATA LAYER ───────────────────────────────────────────
+async function loadComprasData(){
+  const {data,error}=await sb.from('purchase_orders').select('*').order('created_at',{ascending:false});
+  if(error) return {error:error.message};
+  ST.ordenes=data||[];
+  return {error:null};
+}
+async function dbUpdateOrdenStatus(id,status){
+  if(!sb) return {error:'Sin conexión'};
+  const {error}=await sb.from('purchase_orders').update({status}).eq('id',id);
+  return {error};
+}
+
 async function getSignedPhotoUrl(path){
   const cached=ST.chqSignedUrlCache[path];
   if(cached && cached.expiresAt>Date.now()+30000) return cached.url;
@@ -448,7 +469,7 @@ async function doLogin(){
 
 async function doLogout(){
   await sb.auth.signOut();
-  ST.auth=null; ST.authEmail=null; ST.busId=null; ST.buses=[]; ST.logs=[]; ST.adminFilter='all'; ST.view='fleet';
+  ST.auth=null; ST.authEmail=null; ST.busId=null; ST.buses=[]; ST.logs=[]; ST.ordenes=[]; ST.adminFilter='all'; ST.view='fleet';
   ST.bases=[]; ST.operadores=[]; ST.operadorAlias=[]; ST.chequeos=[]; ST.chqSignedUrlCache={};
   render();
 }
@@ -468,6 +489,8 @@ function renderApp(){
     <button class="btn sm${ST.view==='report'?' primary':''}" onclick="ST.view=ST.view==='report'?'fleet':'report';render()">Reportes</button>
     <button class="btn sm${ST.view==='chequeos'?' primary':''}" onclick="ST.view=ST.view==='chequeos'?'fleet':'chequeos';ST.chqHubTab='alertas';render()">Chequeos${ST.chequeos.filter(c=>!c.alerta_atendida).length?`<span class="chq-badge">${ST.chequeos.filter(c=>!c.alerta_atendida).length}</span>`:''}</button>
     <a class="btn sm" href="chequeo.html" target="_blank" rel="noopener">+ Chequeo rápido ↗</a>
+    <button class="btn sm${ST.view==='compras'?' primary':''}" onclick="ST.view=ST.view==='compras'?'fleet':'compras';render()">Compras</button>
+    <a class="btn sm" href="orden-compra.html" target="_blank" rel="noopener">+ Orden de compra ↗</a>
     ${isAdmin?`<button class="btn sm" onclick="ST.modal='bus';render()">+ Unidad</button>`:''}
     <button class="btn sm ghost" onclick="doLogout()">Salir</button>
   </div>`;
@@ -476,6 +499,8 @@ function renderApp(){
     h+=renderReport();
   } else if(ST.view==='chequeos'){
     h+=renderChqHub();
+  } else if(ST.view==='compras'){
+    h+=renderComprasHub();
   } else {
     const shown=isAdmin&&ST.adminFilter!=='all'?buses.filter(b=>b.city===ST.adminFilter):buses;
     h+=`<div class="fleet-grid">`;
@@ -977,6 +1002,137 @@ function renderChqOperadorReport(){
   });
   h+=`</tbody></table></div>`;
   return h;
+}
+
+// ─── ÓRDENES DE COMPRA: hub de reporte (la captura vive en orden-compra.html) ─
+function applyComprasFilters(){
+  const allowed=new Set(cityBuses().map(b=>b.id));
+  let rows=ST.ordenes.filter(o=>allowed.has(o.bus_id));
+  if(ST.pcBus!=='all')    rows=rows.filter(o=>o.bus_id===ST.pcBus);
+  if(ST.pcTipo!=='all')   rows=rows.filter(o=>o.tipo_servicio===ST.pcTipo);
+  if(ST.pcStatus!=='all') rows=rows.filter(o=>o.status===ST.pcStatus);
+  if(ST.pcFrom) rows=rows.filter(o=>o.created_at.slice(0,10)>=ST.pcFrom);
+  if(ST.pcTo)   rows=rows.filter(o=>o.created_at.slice(0,10)<=ST.pcTo);
+  return rows.sort((a,b)=>b.created_at.localeCompare(a.created_at));
+}
+async function doChangeOrdenStatus(id,status){
+  const o=ST.ordenes.find(x=>x.id===id);
+  if(!o||o.status===status) return;
+  const prev=o.status;
+  o.status=status; render();
+  const {error}=await dbUpdateOrdenStatus(id,status);
+  if(error){ o.status=prev; showToast('Error al actualizar. Intenta de nuevo.','error'); render(); }
+  else showToast('Status actualizado');
+}
+function renderComprasHub(){
+  const isAdmin=ST.auth==='admin';
+  const buses=cityBuses().slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const rows=applyComprasFilters();
+  const totalMonto=rows.reduce((s,o)=>s+Number(o.monto||0),0);
+  const uniqBuses=new Set(rows.map(o=>o.bus_id)).size;
+  const hasFilters=ST.pcBus!=='all'||ST.pcTipo!=='all'||ST.pcStatus!=='all'||ST.pcFrom||ST.pcTo;
+
+  let h=`<div class="card">
+    <div class="section-hdr" style="margin-bottom:1rem"><h4>Filtros</h4>
+      ${hasFilters?`<button class="btn sm ghost" onclick="ST.pcBus='all';ST.pcTipo='all';ST.pcStatus='all';ST.pcFrom='';ST.pcTo='';render()">Limpiar filtros</button>`:''}
+    </div>
+    <div class="rpt-filters">
+      <div class="form-row" style="margin:0"><label>Unidad</label>
+        <select onchange="ST.pcBus=this.value;render()">
+          <option value="all">Todas las unidades</option>
+          ${buses.map(b=>`<option value="${b.id}"${ST.pcBus===b.id?' selected':''}>${b.name}</option>`).join('')}
+        </select></div>
+      <div class="form-row" style="margin:0"><label>Tipo de servicio</label>
+        <select onchange="ST.pcTipo=this.value;render()">
+          <option value="all">Todos los tipos</option>
+          ${OC_TIPOS_SERVICIO.map(t=>`<option value="${t}"${ST.pcTipo===t?' selected':''}>${t}</option>`).join('')}
+        </select></div>
+      <div class="form-row" style="margin:0"><label>Status</label>
+        <select onchange="ST.pcStatus=this.value;render()">
+          <option value="all">Todos los status</option>
+          ${Object.entries(OC_STATUS_LABELS).map(([k,v])=>`<option value="${k}"${ST.pcStatus===k?' selected':''}>${v}</option>`).join('')}
+        </select></div>
+      <div class="form-row" style="margin:0"><label>Desde</label>
+        <input type="date" value="${ST.pcFrom}" onchange="ST.pcFrom=this.value;render()"></div>
+      <div class="form-row" style="margin:0"><label>Hasta</label>
+        <input type="date" value="${ST.pcTo}" onchange="ST.pcTo=this.value;render()"></div>
+      <div><button class="btn" style="width:100%" onclick="ST.pcBus='all';ST.pcTipo='all';ST.pcStatus='all';ST.pcFrom='';ST.pcTo='';render()">↺</button></div>
+    </div>
+  </div>`;
+
+  h+=`<div class="rpt-kpi-row" style="grid-template-columns:repeat(${isAdmin?4:2},1fr)">
+    <div class="kpi"><div class="kl">Órdenes</div><div class="kv">${rows.length}</div><div class="ks">en filtro actual</div></div>
+    ${isAdmin?`<div class="kpi"><div class="kl">Monto total</div><div class="kv">${mxn(totalMonto)}</div><div class="ks">filtrado</div></div>`:''}
+    ${isAdmin?`<div class="kpi"><div class="kl">Promedio por orden</div><div class="kv">${rows.length?mxn(totalMonto/rows.length):'—'}</div><div class="ks">filtrado</div></div>`:''}
+    <div class="kpi"><div class="kl">Unidades</div><div class="kv">${uniqBuses}</div><div class="ks">distintas en resultados</div></div>
+  </div>`;
+
+  if(!rows.length){
+    h+=`<div class="empty-state">Sin órdenes de compra para los filtros seleccionados</div>`;
+    return h;
+  }
+
+  h+=`<div class="card" style="overflow-x:auto;padding:0">
+    <table class="rpt-table">
+      <thead><tr>
+        <th style="padding-left:1.25rem">Folio</th>
+        <th>Fecha</th>
+        <th>Unidad</th>
+        <th>Tipo</th>
+        <th>Proveedor</th>
+        <th style="text-align:right">Monto</th>
+        <th style="padding-right:1.25rem">Status</th>
+      </tr></thead>
+      <tbody>`;
+  rows.forEach(o=>{
+    const bus=ST.buses.find(b=>b.id===o.bus_id);
+    h+=`<tr>
+      <td style="padding-left:1.25rem;white-space:nowrap;font-weight:500">${escHtml(o.folio)}</td>
+      <td style="white-space:nowrap;color:var(--text2)">${o.created_at.slice(0,10)}</td>
+      <td style="font-weight:500;white-space:nowrap">${bus?.name||'—'}</td>
+      <td style="color:var(--text2);white-space:nowrap">${escHtml(o.tipo_servicio)}</td>
+      <td style="color:var(--text2)">${escHtml(o.proveedor)}</td>
+      <td style="text-align:right;font-weight:600;white-space:nowrap">${mxn(o.monto)}</td>
+      <td style="padding-right:1.25rem">
+        <select class="pill ${OC_STATUS_PILL[o.status]||'pill-mid'}" style="border:none;width:auto;padding:2px 20px 2px 9px;font-size:11px;font-weight:600" onchange="doChangeOrdenStatus('${o.id}',this.value)">
+          ${Object.entries(OC_STATUS_LABELS).map(([k,v])=>`<option value="${k}"${o.status===k?' selected':''}>${v}</option>`).join('')}
+        </select>
+      </td>
+    </tr>`;
+  });
+  h+=`</tbody></table></div>
+  <div style="display:flex;justify-content:flex-end;margin-top:0.75rem">
+    <button class="btn primary" onclick="exportComprasCSV()">↓ Exportar CSV</button>
+  </div>`;
+  return h;
+}
+function exportComprasCSV(){
+  const rows=applyComprasFilters();
+  if(!rows.length) return;
+  const headers=['Folio','Fecha','Unidad','Tipo de servicio','Proveedor','Cuenta/Referencia','Monto','Solicita','Base','Status'];
+  const lines=[headers.join(',')];
+  rows.forEach(o=>{
+    const bus=ST.buses.find(b=>b.id===o.bus_id);
+    const base=ST.bases.find(b=>b.id===o.base_id);
+    const cells=[
+      o.folio,
+      o.created_at.slice(0,10),
+      `"${(bus?.name||'').replace(/"/g,'""')}"`,
+      `"${o.tipo_servicio.replace(/"/g,'""')}"`,
+      `"${(o.proveedor||'').replace(/"/g,'""')}"`,
+      `"${(o.cuenta_referencia||'').replace(/"/g,'""')}"`,
+      o.monto,
+      `"${(o.solicita||'').replace(/"/g,'""')}"`,
+      `"${(base?.nombre||'').replace(/"/g,'""')}"`,
+      OC_STATUS_LABELS[o.status]||o.status
+    ];
+    lines.push(cells.join(','));
+  });
+  const blob=new Blob([String.fromCharCode(0xFEFF)+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=`ordenes_compra_ate_${today()}.csv`; a.click();
+  URL.revokeObjectURL(url);
 }
 
 function renderStatus(bus){

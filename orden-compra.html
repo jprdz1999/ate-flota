@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orden de Compra — Grupo ATE</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.min.js"></script>
+<link rel="stylesheet" href="shared.css">
+<style>
+.oc-hdr{display:flex;align-items:center;gap:10px;padding:1rem 0 0.75rem;margin-bottom:1rem;border-bottom:0.5px solid var(--border)}
+.oc-hdr h1{font-size:16px;font-weight:600;flex:1}
+#oc-monto,#oc-concepto{font-size:16px}
+</style>
+</head>
+<body>
+<div class="wrap" id="root" style="max-width:520px"><div class="loading-screen"><span class="spinner"></span>Cargando...</div></div>
+
+<script>
+// ─── CONFIG ──────────────────────────────────────────────────────────────────
+const SUPABASE_URL = 'https://mxxvphizdhinixnhtulm.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_WB81yFJaOP0p4b7wiCcWDg_ajhjT68G';
+
+const CITIES = {
+  tj:'Tijuana', mex:'Mexicali', gdl:'Guadalajara', ver:'Veracruz',
+  hgo:'Hidalgo', can:'Cancún', mer:'Mérida', qro:'Querétaro', admin:'Admin — Todas'
+};
+const TIPOS_SERVICIO = ['Mecánica general','Llantas','Eléctrico','Hojalatería y pintura','Refacciones','Otro'];
+const STATUS_LABELS = {pendiente:'Pendiente', autorizada:'Autorizada', pagada:'Pagada', rechazada:'Rechazada'};
+const STATUS_PILL = {pendiente:'pill-mid', autorizada:'pill-blue', pagada:'pill-good', rechazada:'pill-worn'};
+
+// ─── STATE ───────────────────────────────────────────────────────────────────
+let sb = null;
+let ST = {
+  auth:null, authEmail:null, saving:false, loginErr:'',
+  buses:[], bases:[],
+  toast:null, toastType:null,
+
+  view:'form', // 'form' | 'receipt'
+  ocBusId:'', ocTipo:'', ocConcepto:'', ocProveedor:'', ocCuenta:'', ocMonto:'', ocSolicita:'', ocBaseId:'',
+  ocErr:'', ocLastOrder:null
+};
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+async function init(){
+  try {
+    sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { storage: window.sessionStorage, persistSession: true }
+    });
+    const { data:{ session } } = await sb.auth.getSession();
+    if(session){
+      const city = session.user?.user_metadata?.city;
+      if(city){
+        ST.auth = city; ST.authEmail = session.user?.email || null;
+        ST.ocSolicita = ST.authEmail || '';
+        const {error}=await loadData(); if(error) console.error('Error cargando datos:', error);
+      }
+    }
+  } catch(e){ console.error('Supabase unreachable:', e); }
+  render();
+}
+
+// ─── DATA LAYER ──────────────────────────────────────────────────────────────
+async function loadData(){
+  const [r1,r2]=await Promise.all([
+    sb.from('buses').select('*'),
+    sb.from('bases').select('*'),
+  ]);
+  const err=r1.error||r2.error;
+  if(err) return {error:err.message};
+  ST.buses=r1.data||[]; ST.bases=r2.data||[];
+  return {error:null};
+}
+async function dbSaveOrder(order){
+  if(!sb) return {data:null,error:'Sin conexión'};
+  const {data,error}=await sb.from('purchase_orders').insert(order).select().single();
+  return {data,error};
+}
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+function escHtml(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function mxn(n){ return '$'+Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function authCities(){ return ST.auth==='admin'?null:ST.auth.split(','); }
+function cityBuses(){ const c=authCities(); return ST.buses.filter(b=>!c||c.includes(b.city)); }
+function fmtDateTime(iso){ return new Date(iso).toLocaleString('es-MX',{dateStyle:'medium',timeStyle:'short'}); }
+
+// ─── RENDER ──────────────────────────────────────────────────────────────────
+function render(){
+  document.getElementById('root').innerHTML = ST.auth ? renderApp() : renderLogin();
+  document.querySelectorAll('.toast').forEach(t=>t.remove());
+  if(ST.toast){ const t=document.createElement('div'); t.className='toast'+(ST.toastType==='error'?' error':''); t.textContent=ST.toast; document.body.appendChild(t); }
+}
+function showToast(msg,type='success'){ ST.toast=msg; ST.toastType=type; render(); setTimeout(()=>{ ST.toast=null; ST.toastType=null; document.querySelectorAll('.toast').forEach(e=>e.remove()); },2500); }
+
+function renderLogin(){
+  return `<div class="login-wrap"><div class="login-box">
+    <div style="margin-bottom:1.75rem">
+      <h1>Orden de Compra</h1>
+      <p class="sub">Grupo ATE · Ingresa con tu correo y contraseña</p>
+    </div>
+    <div class="form-row"><label>Correo electrónico</label>
+      <input type="email" id="login-email" placeholder="correo@autobusesate.com" autocomplete="username" autofocus>
+    </div>
+    <div class="form-row"><label>Contraseña</label>
+      <input type="password" id="login-pw" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <div class="err">${ST.loginErr}</div>
+    <button class="btn primary full" onclick="doLogin()" style="margin-top:4px" ${ST.saving?'disabled':''}>
+      ${ST.saving?'<span class="spinner"></span>Verificando...':'Entrar'}
+    </button>
+  </div></div>`;
+}
+async function doLogin(){
+  const email=(document.getElementById('login-email')?.value||'').trim();
+  const pw=document.getElementById('login-pw')?.value||'';
+  if(!email||!pw) return;
+  ST.saving=true; ST.loginErr=''; render();
+  const {data,error}=await sb.auth.signInWithPassword({email,password:pw});
+  if(error){ ST.loginErr='Correo o contraseña incorrectos'; ST.saving=false; render(); return; }
+  const city=data.user?.user_metadata?.city;
+  if(!city){ ST.loginErr='Usuario sin ciudad asignada. Contacta al administrador.'; ST.saving=false; render(); return; }
+  ST.auth=city; ST.authEmail=data.user?.email||null; ST.ocSolicita=ST.authEmail||''; ST.saving=false;
+  const {error:loadErr}=await loadData();
+  if(loadErr){ ST.loginErr='Error al cargar datos. Intenta de nuevo.'; ST.auth=null; ST.saving=false; render(); return; }
+  render();
+}
+async function doLogout(){
+  await sb.auth.signOut();
+  ST.auth=null; ST.authEmail=null; ST.buses=[]; ST.bases=[];
+  ST.view='form';
+  render();
+}
+
+function renderApp(){
+  let h=`<div class="oc-hdr">
+    <h1>Orden de Compra</h1>
+    ${ST.auth!=='admin'?`<span class="city-badge">${ST.auth.split(',').map(c=>CITIES[c]).filter(Boolean).join(' · ')}</span>`:''}
+    <button class="btn sm ghost" onclick="doLogout()">Salir</button>
+  </div>`;
+  h += ST.view==='receipt' ? renderReceipt() : renderForm();
+  return h;
+}
+
+function resetForm(){
+  ST.ocBusId=''; ST.ocTipo=''; ST.ocConcepto=''; ST.ocProveedor=''; ST.ocCuenta='';
+  ST.ocMonto=''; ST.ocSolicita=ST.authEmail||''; ST.ocBaseId=''; ST.ocErr='';
+}
+
+function renderForm(){
+  const buses=cityBuses().slice().sort((a,b)=>a.name.localeCompare(b.name));
+  return `<div class="card">
+    <div class="form-row"><label>Unidad *</label>
+      <select id="oc-unidad" onchange="ST.ocBusId=this.value">
+        <option value="">— Selecciona unidad —</option>
+        ${buses.map(b=>`<option value="${b.id}"${ST.ocBusId===b.id?' selected':''}>${escHtml(b.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-row"><label>Tipo de servicio *</label>
+      <select id="oc-tipo" onchange="ST.ocTipo=this.value">
+        <option value="">— Selecciona tipo —</option>
+        ${TIPOS_SERVICIO.map(t=>`<option value="${t}"${ST.ocTipo===t?' selected':''}>${t}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-row"><label>Concepto *</label>
+      <textarea id="oc-concepto" rows="3" placeholder="¿Qué se va a hacer o comprar?" oninput="ST.ocConcepto=this.value">${escHtml(ST.ocConcepto)}</textarea>
+    </div>
+    <div class="form-row"><label>Proveedor *</label>
+      <input type="text" id="oc-proveedor" placeholder="Nombre del proveedor o taller" value="${escHtml(ST.ocProveedor)}" oninput="ST.ocProveedor=this.value">
+    </div>
+    <div class="form-row"><label>Cuenta / referencia</label>
+      <input type="text" id="oc-cuenta" placeholder="Opcional" value="${escHtml(ST.ocCuenta)}" oninput="ST.ocCuenta=this.value">
+    </div>
+    <div class="form-row"><label>Monto (MXN) *</label>
+      <input type="number" id="oc-monto" inputmode="decimal" step="0.01" min="0" placeholder="0.00" value="${escHtml(ST.ocMonto)}" oninput="ST.ocMonto=this.value">
+    </div>
+    <div class="form-row"><label>Solicita *</label>
+      <input type="text" id="oc-solicita" placeholder="Quién solicita la compra" value="${escHtml(ST.ocSolicita)}" oninput="ST.ocSolicita=this.value">
+    </div>
+    <div class="form-row"><label>Base</label>
+      <select id="oc-base" onchange="ST.ocBaseId=this.value">
+        <option value="">— Sin base —</option>
+        ${ST.bases.map(b=>`<option value="${b.id}"${ST.ocBaseId===b.id?' selected':''}>${escHtml(b.nombre)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="err">${ST.ocErr}</div>
+    <button class="btn primary full" onclick="doSaveOrder()" ${ST.saving?'disabled':''}>
+      ${ST.saving?'<span class="spinner"></span>Guardando...':'Generar orden'}
+    </button>
+  </div>`;
+}
+
+async function doSaveOrder(){
+  if(ST.saving) return;
+  const busId=document.getElementById('oc-unidad')?.value||'';
+  const tipo=document.getElementById('oc-tipo')?.value||'';
+  const concepto=(document.getElementById('oc-concepto')?.value||'').trim();
+  const proveedor=(document.getElementById('oc-proveedor')?.value||'').trim();
+  const cuenta=(document.getElementById('oc-cuenta')?.value||'').trim();
+  const montoRaw=document.getElementById('oc-monto')?.value||'';
+  const solicita=(document.getElementById('oc-solicita')?.value||'').trim();
+  const baseId=document.getElementById('oc-base')?.value||'';
+  const monto=parseFloat(montoRaw);
+
+  if(!busId){ ST.ocErr='Selecciona la unidad.'; render(); return; }
+  if(!tipo){ ST.ocErr='Selecciona el tipo de servicio.'; render(); return; }
+  if(!concepto){ ST.ocErr='El concepto es obligatorio.'; render(); return; }
+  if(!proveedor){ ST.ocErr='El proveedor es obligatorio.'; render(); return; }
+  if(!montoRaw||isNaN(monto)||monto<=0){ ST.ocErr='Ingresa un monto válido.'; render(); return; }
+  if(!solicita){ ST.ocErr='El campo "Solicita" es obligatorio.'; render(); return; }
+  ST.ocErr='';
+
+  const order={
+    bus_id:busId, tipo_servicio:tipo, concepto, proveedor,
+    cuenta_referencia:cuenta||null, monto:Math.round(monto*100)/100,
+    solicita, base_id:baseId||null
+  };
+  ST.saving=true; render();
+  const {data,error}=await dbSaveOrder(order);
+  ST.saving=false;
+  if(error){ ST.ocErr='Error al guardar. Intenta de nuevo.'; render(); return; }
+  ST.ocLastOrder=data;
+  ST.view='receipt';
+  render();
+}
+
+function renderReceipt(){
+  const o=ST.ocLastOrder;
+  if(!o){ ST.view='form'; return renderForm(); }
+  const bus=ST.buses.find(b=>b.id===o.bus_id);
+  const base=ST.bases.find(b=>b.id===o.base_id);
+  const canImage=!!window.htmlToImage;
+  const canCopy=canImage && !!(navigator.clipboard && window.ClipboardItem);
+
+  let h=`<div id="oc-receipt-card" class="oc-receipt">
+    <div class="oc-receipt-hdr">
+      <div class="brand">Grupo ATE — Orden de Compra</div>
+      <div class="folio">${escHtml(o.folio)}</div>
+      <div class="sub">${fmtDateTime(o.created_at)}</div>
+    </div>
+    <div class="oc-receipt-row"><span class="lbl">Unidad</span><span class="val">${escHtml(bus?.name||'—')}</span></div>
+    <div class="oc-receipt-row"><span class="lbl">Tipo de servicio</span><span class="val">${escHtml(o.tipo_servicio)}</span></div>
+    <div class="oc-receipt-row"><span class="lbl">Proveedor</span><span class="val">${escHtml(o.proveedor)}</span></div>
+    ${o.cuenta_referencia?`<div class="oc-receipt-row"><span class="lbl">Cuenta / referencia</span><span class="val">${escHtml(o.cuenta_referencia)}</span></div>`:''}
+    <div class="oc-receipt-concepto">${escHtml(o.concepto)}</div>
+    <div class="oc-receipt-monto">
+      <div class="amt">${mxn(o.monto)}</div>
+      <div class="lbl">Monto MXN</div>
+    </div>
+    <div class="oc-receipt-row"><span class="lbl">Solicita</span><span class="val">${escHtml(o.solicita)}</span></div>
+    ${base?`<div class="oc-receipt-row"><span class="lbl">Base</span><span class="val">${escHtml(base.nombre)}</span></div>`:''}
+    <div class="oc-receipt-row"><span class="lbl">Status</span><span class="val"><span class="oc-receipt-status ${STATUS_PILL[o.status]||'pill-mid'}">${STATUS_LABELS[o.status]||o.status}</span></span></div>
+    <div class="oc-receipt-ft">Envía esta captura al grupo de WhatsApp para autorización</div>
+  </div>`;
+
+  h+=`<div class="oc-actions">
+    ${canImage?`<button class="btn primary" onclick="doDownloadImage()">↓ Descargar imagen</button>`:''}
+    ${canCopy?`<button class="btn" onclick="doCopyImage()">Copiar imagen</button>`:''}
+    <button class="btn ghost" onclick="ST.view='form';resetForm();render()">+ Nueva orden</button>
+  </div>`;
+  return h;
+}
+
+async function doDownloadImage(){
+  const node=document.getElementById('oc-receipt-card');
+  if(!node||!window.htmlToImage) return;
+  try{
+    const dataUrl=await htmlToImage.toPng(node,{pixelRatio:2,backgroundColor:'#ffffff'});
+    const a=document.createElement('a');
+    a.href=dataUrl; a.download=`${ST.ocLastOrder.folio}.png`; a.click();
+  }catch(e){ showToast('No se pudo generar la imagen. Toma una captura de pantalla.','error'); }
+}
+async function doCopyImage(){
+  const node=document.getElementById('oc-receipt-card');
+  if(!node||!window.htmlToImage) return;
+  try{
+    const blob=await htmlToImage.toBlob(node,{pixelRatio:2,backgroundColor:'#ffffff'});
+    await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
+    showToast('Imagen copiada');
+  }catch(e){ showToast('No se pudo copiar. Usa Descargar imagen.','error'); }
+}
+
+document.addEventListener('keydown', e=>{ if(e.key==='Enter'&&!ST.auth){ doLogin(); } });
+
+init();
+</script>
+</body>
+</html>
