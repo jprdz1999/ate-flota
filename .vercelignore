@@ -1,0 +1,17 @@
+# Solo se despliega la app web (index.html, chequeo.html, orden-compra.html,
+# shared.css, vercel.json). Todo lo demás queda fuera del deploy público:
+# datos de flota, mockup interno, scripts y artefactos de tooling.
+.agents
+.claude
+.mcp.json
+RESUME_PROMPT.txt
+skills-lock.json
+ate-flota-rediseno.html
+plantilla_unidades.csv
+plantilla_usuarios.csv
+manage_users.py
+import_fleet.py
+requirements.txt
+supabase_mini_checkups.sql
+supabase_purchase_orders.sql
+supabase_users_rls.sql

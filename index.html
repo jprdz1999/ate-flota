@@ -85,6 +85,81 @@
 .cl-hist-item:last-child{border-bottom:none}
 .issue-item{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:0.5px solid var(--border)}
 .issue-item:last-child{border-bottom:none}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   REDISEÑO — Sistema visual (mockup ate-flota-rediseno.html). Override local:
+   solo aplica a index.html; shared.css intacto para chequeo/orden-compra.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;700&display=swap');
+:root{
+  --bg:#141618;--bg2:#1D2023;--bg3:#25292D;
+  --surface:#1D2023;--surface-2:#25292D;--line:#31363B;
+  --text:#E9ECEE;--text2:#8A9298;--text3:#5E666C;
+  --border:#2A2E32;--border2:#3A4046;
+  --accent:#F2B01E;--accent-ink:#241C05;
+  --ok:#3FB950;--warn:#D9A21B;--bad:#E5484D;--none:#5E666C;
+  --blue:#4C8DE0;--blue-dark:#3A6FB0;--blue-bg:#12283f;
+  --green:#3FB950;--green-dark:#5CD16C;--green-bg:rgba(63,185,80,.13);
+  --amber:#D9A21B;--amber-dark:#E5B84B;--amber-bg:rgba(217,162,27,.13);
+  --red:#E5484D;--red-dark:#FF8085;--red-bg:rgba(229,72,77,.14);
+  --radius:9px;--radius-lg:12px;
+}
+body{background:#0C0E10;font-family:Inter,system-ui,sans-serif;color:var(--text)}
+.num{font-family:"Roboto Mono",monospace;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.wrap{max-width:480px;padding:0 0 96px}
+@media(min-width:900px){.wrap{max-width:1100px;padding:0 1rem 96px}}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.primary:hover{background:#ffbe2e;border-color:#ffbe2e}
+
+/* Barra superior de la app */
+.appbar{position:sticky;top:0;z-index:30;background:rgba(20,22,24,.94);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.appbar-row{display:flex;align-items:center;gap:10px;padding:12px 14px}
+.brand{font-family:"Barlow Condensed",sans-serif;font-size:19px;font-weight:700;text-transform:uppercase;letter-spacing:.07em}
+.brand span{color:var(--accent)}
+.iconbtn{width:38px;height:38px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--text);display:grid;place-items:center;cursor:pointer;font-size:15px;flex:0 0 auto}
+.iconbtn:active{background:var(--surface-2)}
+
+/* Header pegajoso de unidad / acción */
+.uhead{position:sticky;top:0;z-index:30;background:rgba(20,22,24,.96);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.uhead-top{display:flex;align-items:center;gap:12px;padding:11px 14px 10px}
+.uback{background:none;border:0;color:var(--text);font-size:24px;cursor:pointer;padding:0 4px;line-height:1;min-width:44px;min-height:44px;display:grid;place-items:center}
+.ubig{font-family:"Roboto Mono",monospace;font-size:24px;font-weight:700;letter-spacing:-.04em;line-height:1}
+.uttl{font-size:15.5px;font-weight:700}
+.umeta{font-size:11.5px;color:var(--text2);margin-top:3px;letter-spacing:.01em}
+.uodo{text-align:right;line-height:1.15;flex:0 0 auto}
+.uodo b{font-family:"Roboto Mono",monospace;font-size:17px;font-weight:600;display:block}
+.uodo span{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em}
+.utabs{display:flex;gap:2px;padding:0 8px;overflow-x:auto;scrollbar-width:none}
+.utabs::-webkit-scrollbar{display:none}
+.utab{flex:0 0 auto;background:none;border:0;border-bottom:2px solid transparent;color:var(--text2);padding:11px 12px 12px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;min-height:44px}
+.utab.on{color:var(--text);border-bottom-color:var(--accent)}
+
+/* Barra de guardar pegajosa inferior */
+.stickybar{position:fixed;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;padding:12px 14px calc(12px + env(safe-area-inset-bottom));background:rgba(20,22,24,.97);backdrop-filter:blur(10px);border-top:1px solid var(--line);z-index:40}
+@media(min-width:900px){.stickybar{max-width:none;left:auto;right:auto;position:sticky}}
+.btn-primary-lg{width:100%;background:var(--accent);color:var(--accent-ink);border:0;border-radius:11px;padding:15px;font-size:15px;font-weight:700;cursor:pointer;min-height:48px}
+.btn-primary-lg:disabled{opacity:.6;cursor:default}
+.btn-ghost-lg{width:100%;background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:11px;padding:14px;font-size:14.5px;font-weight:600;cursor:pointer;margin-top:8px;min-height:48px}
+
+/* Tarjetas y badges del rediseño */
+.pad{padding:14px}
+.rcard{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:10px}
+.rcard.act{cursor:pointer}.rcard.act:active{background:var(--surface-2)}
+.grouphead{display:flex;align-items:baseline;gap:8px;padding:16px 2px 8px;font-family:"Barlow Condensed",sans-serif;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.12em;color:var(--text2)}
+.grouphead b{color:var(--text3);font-weight:600}
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:3px 8px;border-radius:5px;letter-spacing:.02em;white-space:nowrap}
+.badge .bdot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.b-bad{background:var(--red-bg);color:var(--red-dark)}
+.b-warn{background:var(--amber-bg);color:var(--amber-dark)}
+.b-ok{background:var(--green-bg);color:var(--green-dark)}
+.b-none{background:rgba(138,146,152,.13);color:var(--text2)}
+.kv{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+.kv:last-child{border-bottom:0}.kv span{color:var(--text2)}.kv b{font-weight:600}
+
+/* Skeleton de carga */
+.skel{background:linear-gradient(90deg,var(--surface) 25%,var(--surface-2) 50%,var(--surface) 75%);background-size:200% 100%;animation:skel 1.2s ease-in-out infinite;border-radius:8px}
+@keyframes skel{to{background-position:-200% 0}}
+.skel-row{height:64px;margin:1px 0}
 </style>
 </head>
 <body>
@@ -182,7 +257,8 @@ function sevPill(sev){ return sev==='seguridad'?'pill-worn':sev==='cosmetico'?'p
 // ─── STATE ───────────────────────────────────────────────────────────────────
 let sb = null;
 let ST = {
-  auth:null, role:null, authEmail:null, busId:null, tab:'log', selTire:null,
+  auth:null, role:null, authEmail:null, busId:null, tab:'status', selTire:null,
+  action:null, actionParam:null,
   modal:null, logFilter:'all', tirePrePos:null, tirePreEvent:null,
   loginErr:'', saving:false,
   adminFilter:'all', buses:[], logs:[], toast:null, toastType:null, modalErr:'',
@@ -485,16 +561,16 @@ function renderApp(){
   const isAdmin=ST.role==='admin';
 
   let h=`<div class="nav">
-    <button class="btn sm ghost" onclick="ST.busId=null;ST.view='fleet';ST.modalErr='';render()" title="Inicio">⌂ Inicio</button>
+    <button class="btn sm ghost" onclick="navigate('/')" title="Inicio">⌂ Inicio</button>
     <span class="nav-brand">Grupo ATE — Flota</span>
-    ${isAdmin?`<select style="width:auto" onchange="ST.adminFilter=this.value;ST.busId=null;render()">
+    ${isAdmin?`<select style="width:auto" onchange="ST.adminFilter=this.value;navigate('/')">
       <option value="all">Todas las ciudades</option>
       ${adminFilterCities().map(k=>`<option value="${k}">${CITIES[k]?.name}</option>`).join('')}
     </select>`:`<span class="city-badge">${ST.auth==='all'?'Todas':ST.auth.split(',').map(c=>CITIES[c]?.name).filter(Boolean).join(' · ')}</span>`}
-    <button class="btn sm${ST.view==='report'?' primary':''}" onclick="ST.view=ST.view==='report'?'fleet':'report';render()">Reportes</button>
-    <button class="btn sm${ST.view==='chequeos'?' primary':''}" onclick="ST.view=ST.view==='chequeos'?'fleet':'chequeos';ST.chqHubTab='alertas';render()">Chequeos${ST.chequeos.filter(c=>!c.alerta_atendida).length?`<span class="chq-badge">${ST.chequeos.filter(c=>!c.alerta_atendida).length}</span>`:''}</button>
+    <button class="btn sm${ST.view==='report'?' primary':''}" onclick="navigate(ST.view==='report'?'/':'/reportes')">Reportes</button>
+    <button class="btn sm${ST.view==='chequeos'?' primary':''}" onclick="ST.chqHubTab='alertas';navigate(ST.view==='chequeos'?'/':'/chequeos')">Chequeos${ST.chequeos.filter(c=>!c.alerta_atendida).length?`<span class="chq-badge">${ST.chequeos.filter(c=>!c.alerta_atendida).length}</span>`:''}</button>
     <a class="btn sm" href="chequeo.html" target="_blank" rel="noopener">+ Chequeo rápido ↗</a>
-    <button class="btn sm${ST.view==='compras'?' primary':''}" onclick="ST.view=ST.view==='compras'?'fleet':'compras';render()">Compras</button>
+    <button class="btn sm${ST.view==='compras'?' primary':''}" onclick="navigate(ST.view==='compras'?'/':'/compras')">Compras</button>
     <a class="btn sm" href="orden-compra.html" target="_blank" rel="noopener">+ Orden de compra ↗</a>
     ${isAdmin?`<button class="btn sm" onclick="ST.modal='bus';render()">+ Unidad</button>`:''}
     <button class="btn sm ghost" onclick="doLogout()">Salir</button>
@@ -528,14 +604,15 @@ function renderApp(){
     } else {
       const al=getAlerts(bus);
       if(al.length) h+=`<div class="alert-bar">⚠ ${al.join(' &nbsp;·&nbsp; ')}</div>`;
+      const uid_=encodeURIComponent(bus.id);
       h+=`<div class="tab-row">
-        <button class="tab${ST.tab==='status'?' active':''}" onclick="ST.tab='status';render()">Status</button>
-        <button class="tab${ST.tab==='service'?' active':''}" onclick="ST.tab='service';ST.modalErr='';ST.selService=null;render()">Servicio</button>
-        <button class="tab${ST.tab==='tires'?' active':''}" onclick="ST.tab='tires';render()">Llantas</button>
-        <button class="tab${ST.tab==='repairs'?' active':''}" onclick="ST.tab='repairs';ST.modalErr='';render()">Reparaciones</button>
-        <button class="tab${ST.tab==='checklist'?' active':''}" onclick="ST.tab='checklist';ST.clView='history';ST.modalErr='';render()">Checklist</button>
-        <button class="tab${ST.tab==='chequeo'?' active':''}" onclick="ST.tab='chequeo';ST.chqTimelineSel=null;render()">Chequeos</button>
-        <button class="tab${ST.tab==='log'?' active':''}" onclick="ST.tab='log';render()">Historial</button>
+        <button class="tab${ST.tab==='status'?' active':''}" onclick="navigate('/unidad/${uid_}')">Status</button>
+        <button class="tab${ST.tab==='service'?' active':''}" onclick="ST.selService=null;navigate('/unidad/${uid_}/servicio')">Servicio</button>
+        <button class="tab${ST.tab==='tires'?' active':''}" onclick="navigate('/unidad/${uid_}/llantas')">Llantas</button>
+        <button class="tab${ST.tab==='repairs'?' active':''}" onclick="navigate('/unidad/${uid_}/reparaciones')">Reparaciones</button>
+        <button class="tab${ST.tab==='checklist'?' active':''}" onclick="ST.clView='history';navigate('/unidad/${uid_}/checklist')">Checklist</button>
+        <button class="tab${ST.tab==='chequeo'?' active':''}" onclick="ST.chqTimelineSel=null;navigate('/unidad/${uid_}/chequeo')">Chequeos</button>
+        <button class="tab${ST.tab==='log'?' active':''}" onclick="navigate('/unidad/${uid_}/historial')">Historial</button>
       </div>`;
       if(ST.tab==='status')    h+=renderStatus(bus);
       if(ST.tab==='service')   h+=renderService(bus);
@@ -1657,7 +1734,7 @@ function renderBusModal(){
 }
 
 // ─── ACTIONS ─────────────────────────────────────────────────────────────────
-function selectBus(id){ ST.busId=id; ST.selTire=null; ST.tab='status'; ST.clView='history'; render(); }
+function selectBus(id){ ST.clView='history'; navigate('/unidad/'+encodeURIComponent(id)); }
 function openTireAt(pos){ ST.tirePrePos=pos; ST.tirePreEvent='new'; ST.modal='tire'; render(); }
 function openTireAction(pos,event){ ST.tirePrePos=pos; ST.tirePreEvent=event; ST.modal='tire'; render(); }
 
@@ -2000,10 +2077,85 @@ function exportCSV(){
   URL.revokeObjectURL(url);
 }
 
+// ─── ROUTER (History API) ────────────────────────────────────────────────────
+// Cada pantalla es una URL real. navigate() empuja al historial del navegador;
+// popstate (botón atrás del navegador y gesto de atrás del celular) re-deriva el
+// estado desde la URL. Los links directos abren esa pantalla con esa unidad.
+// Producción: vercel.json reescribe las rutas sin extensión a index.html.
+const TAB_SLUGS = {  // slug en la URL  ->  ST.tab interno
+  status:'status', servicio:'service', llantas:'tires', reparaciones:'repairs',
+  checklist:'checklist', chequeo:'chequeo', historial:'log'
+};
+const TAB_SLUG_BY_TAB = Object.fromEntries(Object.entries(TAB_SLUGS).map(([slug,tab])=>[tab,slug]));
+const HUB_SLUGS   = { reportes:'report', chequeos:'chequeos', compras:'compras' };
+const HUB_SLUG_BY_VIEW = Object.fromEntries(Object.entries(HUB_SLUGS).map(([slug,view])=>[view,slug]));
+const ACEITE_SLUGS = { motor:'svc', transmision:'svc_trans', diferencial:'svc_diff' };
+const ACEITE_SLUG_BY_TYPE = { svc:'motor', svc_trans:'transmision', svc_diff:'diferencial' };
+// Acciones que son pantalla propia (header pegajoso + barra de guardar inferior).
+const ACTION_SLUGS = new Set(['chequeo-nuevo','aceite','llantas','reparacion','golpes','registro']);
+
+function parsePath(pathname){
+  const seg = decodeURIComponent(pathname).replace(/^\/+|\/+$/g,'').split('/').filter(Boolean);
+  if(!seg.length) return {view:'fleet'};
+  if(HUB_SLUGS[seg[0]]) return {view:HUB_SLUGS[seg[0]]};
+  if(seg[0]==='unidad' && seg[1]){
+    const r={view:'fleet', busId:seg[1]};
+    const sub=seg[2];
+    if(!sub){ r.tab='status'; return r; }
+    if(TAB_SLUGS[sub]){ r.tab=TAB_SLUGS[sub]; return r; }
+    if(ACTION_SLUGS.has(sub)){ r.action=sub; if(sub==='aceite'&&seg[3]) r.actionParam=seg[3]; return r; }
+    r.tab='status'; return r;
+  }
+  return {view:'fleet'};
+}
+
+// URL canónica del estado actual (para replaceState al abrir acciones/modales).
+function pathForState(){
+  if(ST.busId){
+    let p='/unidad/'+encodeURIComponent(ST.busId);
+    if(ST.action){ p+='/'+ST.action; if(ST.action==='aceite'&&ST.actionParam) p+='/'+ST.actionParam; }
+    else if(ST.tab && ST.tab!=='status') p+='/'+(TAB_SLUG_BY_TAB[ST.tab]||ST.tab);
+    return p;
+  }
+  return HUB_SLUG_BY_VIEW[ST.view] ? '/'+HUB_SLUG_BY_VIEW[ST.view] : '/';
+}
+
+function applyRoute(){
+  const r=parsePath(location.pathname);
+  ST.view=r.view||'fleet';
+  ST.busId=r.busId||null;
+  ST.tab=r.tab||'status';
+  ST.action=r.action||null;
+  ST.actionParam=r.actionParam||null;
+  ST.selService = (r.action==='aceite') ? (ACEITE_SLUGS[r.actionParam]||null) : null;
+  ST.selTire=null; ST.modal=null; ST.modalErr='';
+}
+
+// Navegación central: todo cambio de PANTALLA pasa por aquí para que el
+// historial y el botón atrás funcionen. Los cambios que no son de pantalla
+// (filtros, toggles de formulario) siguen usando render() directo.
+function navigate(path, opts){
+  opts=opts||{};
+  if(typeof path!=='string') path=pathForState();
+  if(opts.replace) history.replaceState({}, '', path);
+  else history.pushState({}, '', path);
+  applyRoute();
+  render();
+  window.scrollTo(0,0);
+}
+function goBack(){ history.length>1 ? history.back() : navigate('/'); }
+
+window.addEventListener('popstate', ()=>{ applyRoute(); render(); });
+
 // keyboard shortcut: Enter on password field
 document.addEventListener('keydown', e=>{ if(e.key==='Enter'&&!ST.auth){ doLogin(); } });
 
-init();
+async function boot(){
+  await init();          // auth + carga de datos + primer render
+  applyRoute();          // deriva la pantalla desde la URL (deep links)
+  render();
+}
+boot();
 </script>
 </body>
 </html>
