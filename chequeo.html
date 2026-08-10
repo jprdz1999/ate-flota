@@ -10,6 +10,9 @@
 .chq-search{font-size:16px;padding:12px 14px;margin-bottom:12px}
 .chq-hdr{display:flex;align-items:center;gap:10px;padding:1rem 0 0.75rem;margin-bottom:1rem;border-bottom:0.5px solid var(--border)}
 .chq-hdr h1{font-size:16px;font-weight:600;flex:1}
+.odo-big{width:100%;font-size:30px;font-weight:600;text-align:center;letter-spacing:0.02em;padding:14px;border:1.5px solid var(--blue);border-radius:10px;font-variant-numeric:tabular-nums}
+.odo-hint{font-size:12px;color:var(--text3);margin-top:7px;text-align:center}
+.odo-req{color:var(--red);font-weight:700}
 </style>
 </head>
 <body>
@@ -41,7 +44,7 @@ let ST = {
 
   chqDeepLinkBusId:null,
   view:'picker', pickerQuery:'',
-  chqBusId:null, chqBase:'', chqId:null,
+  chqBusId:null, chqBase:'', chqId:null, chqKm:'',
   chqPhotos:{}, chqPhotoPreviews:{}, chqUploadProgress:{},
   chqPrevPins:[], chqPins:[], chqPinDraft:null,
   chqOperadorText:'', chqOperadorMatches:[], chqOperadorResolvedId:null, chqOperadorConfirmingAlias:null,
@@ -94,6 +97,11 @@ async function loadData(){
 async function dbSaveChequeo(chq){
   if(!sb) return {error:'Sin conexión'};
   const {error}=await sb.from('chequeos_rapidos').insert(chq);
+  return {error};
+}
+async function dbUpdateBusKm(busId, km){
+  if(!sb) return {error:'Sin conexión'};
+  const {error}=await sb.from('buses').update({km}).eq('id',busId);
   return {error};
 }
 async function dbSaveOperador(operador){
@@ -243,6 +251,7 @@ function openCapture(busId){
   const prev=getUltimoChequeoPrevio(busId);
   ST.chqBusId=busId;
   ST.chqId=uid();
+  ST.chqKm='';
   // ST.chqBase NO se resetea aquí a propósito: en una base física, el mismo
   // staff hace varios chequeos seguidos sin cambiar de base — mantenerlo
   // preseleccionado ahorra un tap por unidad.
@@ -258,9 +267,14 @@ function openCapture(busId){
 function renderCapture(){
   const bus=ST.buses.find(b=>b.id===ST.chqBusId);
   if(!bus){ ST.view='picker'; return renderPicker(); }
+  const lastKm=bus.km||0;
   let h=`<div class="card"><div class="section-hdr" style="margin-bottom:0.75rem">
     <h4>${escHtml(bus.name)}</h4>
     <button class="btn sm ghost" onclick="ST.view='picker';render()">← Otra unidad</button>
+  </div>
+  <div class="form-row" style="margin-bottom:14px"><label>Odómetro <span class="odo-req">*</span></label>
+    <input type="number" id="chq-km" class="odo-big" inputmode="numeric" value="${escHtml(ST.chqKm)}" oninput="ST.chqKm=this.value" onfocus="this.select()" placeholder="0">
+    <div class="odo-hint">${lastKm>0?`Última lectura: ${lastKm.toLocaleString('es-MX')} km`:'Primera lectura de esta unidad'}</div>
   </div>
   <div class="form-row" style="max-width:280px;margin:0"><label>Base *</label>
     <select onchange="ST.chqBase=this.value;render()">
@@ -488,6 +502,22 @@ async function doSaveChequeo(){
   if(ST.saving) return;
   const bus=ST.buses.find(b=>b.id===ST.chqBusId);
   if(!bus) return;
+  // Odómetro: primer campo obligatorio. La app entera depende de este dato.
+  const kmRaw=(document.getElementById('chq-km')?.value ?? ST.chqKm ?? '').toString().trim();
+  if(kmRaw===''){ ST.chqErr='Captura el odómetro (es obligatorio).'; render(); return; }
+  const km=parseInt(kmRaw,10);
+  if(isNaN(km)||km<0){ ST.chqErr='El odómetro no es un número válido.'; render(); return; }
+  const lastKm=bus.km||0;
+  if(lastKm>0 && km<lastKm){
+    ST.chqErr=`El odómetro (${km.toLocaleString('es-MX')} km) no puede ser menor que la última lectura registrada (${lastKm.toLocaleString('es-MX')} km).`;
+    render(); return;
+  }
+  if(lastKm>0){
+    const prevChk=getUltimoChequeoPrevio(ST.chqBusId);
+    const days=prevChk?.fecha ? Math.max(1,Math.round((new Date(today())-new Date(prevChk.fecha))/86400000)) : 1;
+    const jump=km-lastKm;
+    if(jump>2000*days && !confirm(`Salto de ${jump.toLocaleString('es-MX')} km desde la última lectura (${days} día${days===1?'':'s'}). ¿Es correcto?`)) return;
+  }
   if(!ST.chqBase){ ST.chqErr='Selecciona la base.'; render(); return; }
   const missingPhoto=CHQ_SLOTS.find(s=>!ST.chqPhotos[s]);
   if(missingPhoto){ ST.chqErr=`Falta la foto: ${CHQ_SLOT_LABELS[missingPhoto]}.`; render(); return; }
@@ -505,6 +535,7 @@ async function doSaveChequeo(){
   const chq={
     id:ST.chqId,
     bus_id:ST.chqBusId,
+    km:km,
     base_id:ST.chqBase,
     operador_id:ST.chqOperadorResolvedId||null,
     operador_texto:operadorTexto,
@@ -526,6 +557,14 @@ async function doSaveChequeo(){
   if(error){
     ST.chequeos=ST.chequeos.filter(c=>c.id!==chq.id);
     ST.saving=false; ST.chqErr='Error al guardar. Intenta de nuevo.'; render(); return;
+  }
+  // Actualiza el odómetro de la unidad — los ciclos (aceite/llanta) se recalculan
+  // solos porque se derivan en vivo de bus.km en index.html.
+  if(km>(bus.km||0)){
+    const prevBusKm=bus.km;
+    bus.km=km;
+    const {error:eKm}=await dbUpdateBusKm(bus.id, km);
+    if(eKm){ bus.km=prevBusKm; showToast('Chequeo guardado, pero no se pudo actualizar el odómetro de la unidad.','error'); }
   }
   ST.saving=false;
   ST.chqLastResult={busName:bus.name, danoNuevo, severidadMaxima};
