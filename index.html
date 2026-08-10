@@ -170,6 +170,35 @@ body{background:#0C0E10;font-family:Inter,system-ui,sans-serif;color:var(--text)
 .odo-field .req{color:var(--accent);font-weight:700}
 .only-desktop{display:none}
 @media(min-width:900px){.only-mobile{display:none}.only-desktop{display:block}}
+
+/* ── Home por prioridad (Fase 5) ── */
+.search{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:0 12px;height:46px;margin-bottom:12px}
+.search input{background:none;border:0;outline:none;color:var(--text);font-size:15px;width:100%;font-family:inherit}
+.search input::placeholder{color:var(--text3)}
+.chips{display:flex;gap:7px;padding-bottom:12px;overflow-x:auto;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:0 0 auto;padding:7px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--text2);font-size:12.5px;font-weight:500;cursor:pointer;white-space:nowrap}
+.chip.on{background:var(--text);color:#121417;border-color:var(--text);font-weight:600}
+.rows{display:flex;flex-direction:column}
+.frow{display:flex;align-items:center;gap:12px;padding:12px 2px;border-top:1px solid var(--line);cursor:pointer;background:none;width:100%;text-align:left;color:inherit;font-family:inherit;border-left:0;border-right:0;border-bottom:0}
+.frow:active{background:var(--surface)}
+.frow:last-child{border-bottom:1px solid var(--line)}
+.frow .unit{width:56px;flex:0 0 auto;font-family:"Roboto Mono",monospace;font-size:19px;font-weight:700;letter-spacing:-.03em}
+.frow .rowmid{flex:1;min-width:0}
+.frow .rowsub{font-size:12.5px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px}
+.frow .km{font-family:"Roboto Mono",monospace;font-size:12.5px;color:var(--text3)}
+.frow .chev{color:var(--text3);font-size:16px;flex:0 0 auto}
+.tabbar{position:fixed;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);background:rgba(20,22,24,.97);backdrop-filter:blur(10px);border-top:1px solid var(--line);z-index:40;padding-bottom:env(safe-area-inset-bottom)}
+@media(min-width:900px){.tabbar{max-width:none}}
+.tabbar button{background:none;border:0;color:var(--text3);padding:9px 0 11px;font-size:10.5px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;font-family:inherit;letter-spacing:.02em}
+.tabbar button i{font-size:16px;font-style:normal;line-height:1}
+.tabbar button.on{color:var(--accent)}
+.menu-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:50;display:flex;align-items:flex-end;justify-content:center}
+@media(min-width:900px){.menu-overlay{align-items:center}}
+.menu-sheet{background:var(--surface);border:1px solid var(--line);border-radius:14px 14px 0 0;width:100%;max-width:480px;padding:14px 14px calc(14px + env(safe-area-inset-bottom))}
+@media(min-width:900px){.menu-sheet{border-radius:14px}}
+.menu-item{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);color:var(--text);padding:15px 6px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;text-decoration:none}
+.menu-item:last-child{border-bottom:0}
 </style>
 </head>
 <body>
@@ -273,6 +302,7 @@ let ST = {
   loginErr:'', saving:false,
   adminFilter:'all', buses:[], logs:[], toast:null, toastType:null, modalErr:'',
   view:'fleet', rptBus:'all', rptType:'all', rptFrom:'', rptTo:'',
+  fleetQuery:'', fleetChip:'atencion',
   clView:'history', svcErrType:null, selService:null,
   clPrevPins:[], clPins:[], clPinDraft:null,   // diagrama de golpes en el checklist
 
@@ -640,48 +670,121 @@ function renderApp(){
 }
 
 function renderHubShell(){
-  const buses=cityBuses();
-  const isAdmin=ST.role==='admin';
-  let h=`<div class="nav">
-    <button class="btn sm ghost" onclick="navigate('/')" title="Inicio">⌂ Inicio</button>
-    <span class="nav-brand">Grupo ATE — Flota</span>
-    ${isAdmin?`<select style="width:auto" onchange="ST.adminFilter=this.value;navigate('/')">
-      <option value="all">Todas las ciudades</option>
-      ${adminFilterCities().map(k=>`<option value="${k}">${CITIES[k]?.name}</option>`).join('')}
-    </select>`:`<span class="city-badge">${ST.auth==='all'?'Todas':ST.auth.split(',').map(c=>CITIES[c]?.name).filter(Boolean).join(' · ')}</span>`}
-    <button class="btn sm${ST.view==='report'?' primary':''}" onclick="navigate(ST.view==='report'?'/':'/reportes')">Reportes</button>
-    <button class="btn sm${ST.view==='chequeos'?' primary':''}" onclick="ST.chqHubTab='alertas';navigate(ST.view==='chequeos'?'/':'/chequeos')">Chequeos${ST.chequeos.filter(c=>!c.alerta_atendida).length?`<span class="chq-badge">${ST.chequeos.filter(c=>!c.alerta_atendida).length}</span>`:''}</button>
-    <button class="btn sm${ST.view==='compras'?' primary':''}" onclick="navigate(ST.view==='compras'?'/':'/compras')">Compras</button>
-    <a class="btn sm" href="/orden-compra.html" target="_blank" rel="noopener">+ Orden de compra ↗</a>
-    ${isAdmin?`<button class="btn sm" onclick="ST.modal='bus';render()">+ Unidad</button>`:''}
-    <button class="btn sm ghost" onclick="doLogout()">Salir</button>
-  </div>`;
+  const pend=ST.chequeos.filter(c=>!c.alerta_atendida).length;
+  let h=`<div class="appbar" style="margin-bottom:8px"><div class="appbar-row">
+    <div class="brand">Grupo <span>ATE</span></div><div style="flex:1"></div>
+    <button class="iconbtn" title="Nuevo" onclick="ST.modal='create';render()">＋</button>
+    <button class="iconbtn" title="Cuenta" onclick="ST.modal='account';render()">◍</button>
+  </div></div>`;
 
+  h+=`<div style="padding:0 14px">`;
   if(ST.view==='report')        h+=renderReport();
   else if(ST.view==='chequeos') h+=renderChqHub();
   else if(ST.view==='compras')  h+=renderComprasHub();
-  else {
-    const shown=isAdmin&&ST.adminFilter!=='all'?buses.filter(b=>b.city===ST.adminFilter):buses;
-    h+=`<div class="fleet-grid">`;
-    shown.forEach(b=>{
-      const ind=getFleetIndicators(b);
-      h+=`<div class="bus-chip" onclick="selectBus('${b.id}')">
-        <div class="cn">${b.name}</div>
-        <div class="status-bar">
-          <span class="ind ind-${ind.oil}" title="${ind.oilTip}"></span>
-          <span class="ind ind-${ind.tire}" title="${ind.tireTip}"></span>
-          <span class="ind ind-${ind.issues}" title="${ind.issuesTip}"></span>
-        </div>
-        <div class="cm">${b.client}${isAdmin?' · '+CITIES[b.city]?.name:''}<br>${fmt(b.km)} km</div>
-      </div>`;
-    });
-    if(isAdmin) h+=`<div class="bus-chip chip-add" onclick="ST.modal='bus';render()">+ Nueva unidad</div>`;
-    h+=`</div>`;
-  }
+  else                          h+=renderFleetHome();
+  h+=`</div>`;
 
-  if(ST.modal==='bus')   h+=renderBusModal();
-  if(ST.modal==='chqQr') h+=renderChqQrModal();
+  const nav=(view,slug,icon,lbl,badge)=>`<button class="${ST.view===view?'on':''}" onclick="${view==='chequeos'?"ST.chqHubTab='alertas';":''}navigate('${slug}')"><i>${icon}</i>${lbl}${badge?`<span class="chq-badge">${badge}</span>`:''}</button>`;
+  h+=`<nav class="tabbar">
+    ${nav('fleet','/','▤','Flota')}${nav('chequeos','/chequeos','✓','Inspecciones',pend)}
+    ${nav('compras','/compras','⛭','Taller')}${nav('report','/reportes','▦','Reportes')}
+  </nav>`;
+
+  if(ST.modal==='bus')     h+=renderBusModal();
+  if(ST.modal==='chqQr')   h+=renderChqQrModal();
+  if(ST.modal==='create')  h+=renderCreateMenu();
+  if(ST.modal==='account') h+=renderAccountMenu();
   return h;
+}
+
+// Home por prioridad: responde "¿qué requiere atención hoy?".
+function renderFleetHome(){
+  const buses=cityBuses();
+  const cities=[...new Set(buses.map(b=>b.city))];
+  let h=`<div class="search"><span style="color:var(--text3)">⌕</span>
+    <input inputmode="numeric" placeholder="Buscar unidad por número…" value="${escHtml(ST.fleetQuery)}" oninput="this.value=this.value.replace(/\\D/g,'');ST.fleetQuery=this.value;refreshFleetList()"></div>`;
+  const chip=(id,lbl)=>`<button class="chip${ST.fleetChip===id?' on':''}" onclick="ST.fleetChip='${id}';render()">${lbl}</button>`;
+  h+=`<div class="chips">${chip('atencion','Requieren atención')}${chip('todas','Todas')}${cities.map(c=>chip(c,CITIES[c]?.name||c)).join('')}${chip('pasaje','Pasaje')}${chip('empresarial','Empresarial')}</div>`;
+  h+=`<div id="fleet-list">${renderFleetGroups()}</div>`;
+  return h;
+}
+function fleetFiltered(){
+  let buses=cityBuses();
+  const c=ST.fleetChip;
+  if(c==='pasaje') buses=buses.filter(b=>b.client==='Pasaje');
+  else if(c==='empresarial') buses=buses.filter(b=>b.client!=='Pasaje');
+  else if(c && c!=='atencion' && c!=='todas') buses=buses.filter(b=>b.city===c);
+  if(ST.fleetQuery) buses=buses.filter(b=>String(b.name).includes(ST.fleetQuery));
+  return buses;
+}
+function renderFleetGroups(){
+  const rows=fleetFiltered().map(b=>({b, s:unitStatus(b)}));
+  const groups=[{id:'atencion',lbl:'Requieren atención'},{id:'vencer',lbl:'Por vencer'},{id:'sindatos',lbl:'Sin datos de odómetro'},{id:'aldia',lbl:'Al día'}];
+  const soloAtencion = ST.fleetChip==='atencion';
+  let h='', any=false;
+  groups.forEach(g=>{
+    if(soloAtencion && g.id==='aldia') return;
+    const list=rows.filter(r=>r.s.group===g.id).sort((a,b)=>String(a.b.name).localeCompare(String(b.b.name),undefined,{numeric:true}));
+    if(!list.length) return;
+    any=true;
+    h+=`<div class="grouphead">${g.lbl} <b>${list.length}</b></div><div class="rows">`;
+    list.forEach(({b,s})=>{
+      h+=`<button class="frow" onclick="selectBus('${b.id}')">
+        <div class="unit">${b.name}</div>
+        <div class="rowmid"><span class="badge ${s.cls}"><span class="bdot"></span>${s.badge}</span>
+          <div class="rowsub">${s.reason}</div></div>
+        <div class="km">${b.km?fmt(b.km):'—'}</div><div class="chev">›</div>
+      </button>`;
+    });
+    h+=`</div>`;
+  });
+  if(!any) h=`<div class="empty-state">Sin unidades para este filtro.</div>`;
+  return h;
+}
+function refreshFleetList(){ const el=document.getElementById('fleet-list'); if(el) el.innerHTML=renderFleetGroups(); }
+
+// Estado accionable de una unidad: grupo de severidad + badge de texto + motivo.
+function unitStatus(bus){
+  const nuevos=activeDanos(bus.id).filter(d=>d.fecha_deteccion===today());
+  const seg=activeDanos(bus.id).filter(d=>d.severidad==='seguridad');
+  if(nuevos.length||seg.length){ const d=nuevos[0]||seg[0]; return {group:'atencion', badge:'Golpe nuevo', cls:'b-bad', reason:d.descripcion||'Detectado en inspección'}; }
+  if(!bus.km) return {group:'sindatos', badge:'Sin datos', cls:'b-none', reason:'Sin kilometraje — captúralo en un chequeo'};
+  let overdue=null, soon=null;
+  applicableServices(bus).forEach(svc=>{ const al=getServiceAlertFor(bus,svc.type,svc.interval);
+    if(al.status==='overdue'){ if(!overdue||al.overdueBy>overdue.by) overdue={label:svc.label,by:al.overdueBy}; }
+    else if(al.status==='ok' && al.remaining<=Math.max(1000,Math.round(svc.interval*0.1))){ if(!soon||al.remaining<soon.rem) soon={label:svc.label,rem:al.remaining}; }
+  });
+  if(overdue) return {group:'atencion', badge:'Servicio vencido', cls:'b-bad', reason:`${overdue.label} · ${fmt(overdue.by)} km pasados`};
+  let tireBad=null;
+  Object.entries(bus.tires||{}).forEach(([pos,t])=>{ if(t){ const km=tireKM(t,bus.km); if(km>=70000 && (!tireBad||km>tireBad.km)) tireBad={pos,km}; } });
+  if(tireBad) return {group:'atencion', badge:'Llanta baja', cls:'b-warn', reason:`${POS_NAMES[tireBad.pos]||tireBad.pos} · ${fmt(tireBad.km)} km`};
+  if(soon) return {group:'vencer', badge:`Servicio en ${fmt(soon.rem)} km`, cls:'b-warn', reason:soon.label};
+  if(bus.client==='Pasaje'){
+    const hoy=ST.chequeos.some(c=>c.bus_id===bus.id && c.fecha===today());
+    if(!hoy){ const last=ST.chequeos.filter(c=>c.bus_id===bus.id).sort((a,b)=>b.fecha.localeCompare(a.fecha))[0]; return {group:'vencer', badge:'Sin chequeo hoy', cls:'b-warn', reason:last?`Último: ${last.fecha}`:'Sin chequeos registrados'}; }
+  }
+  const al0=getServiceAlert(bus);
+  return {group:'aldia', badge:'Al día', cls:'b-ok', reason:al0.lastLog?`Próximo servicio en ${fmt(al0.remaining)} km`:'Sin alertas'};
+}
+
+function renderCreateMenu(){
+  const isAdmin=ST.role==='admin';
+  return `<div class="menu-overlay" onclick="if(event.target===this){ST.modal=null;render()}"><div class="menu-sheet">
+    <div class="grouphead" style="padding:0 2px 8px">Crear</div>
+    ${isAdmin?`<button class="menu-item" onclick="ST.modal='bus';render()">＋  Nueva unidad</button>`:''}
+    <a class="menu-item" href="/orden-compra.html" target="_blank" rel="noopener">＋  Orden de compra ↗</a>
+    <button class="menu-item" style="color:var(--text2)" onclick="ST.modal=null;render()">Cancelar</button>
+  </div></div>`;
+}
+function renderAccountMenu(){
+  const isAdmin=ST.role==='admin';
+  const scope=ST.auth==='all'?'Todas las ciudades':(ST.auth||'').split(',').map(c=>CITIES[c]?.name).filter(Boolean).join(' · ');
+  return `<div class="menu-overlay" onclick="if(event.target===this){ST.modal=null;render()}"><div class="menu-sheet">
+    <div class="grouphead" style="padding:0 2px 8px">Cuenta</div>
+    <div style="padding:2px 4px 12px;font-size:13px;color:var(--text2);line-height:1.5">${escHtml(ST.authEmail||'')}<br>${isAdmin?'Administrador':'Operador'} · ${scope}</div>
+    <button class="menu-item" onclick="doLogout()">Salir</button>
+    <button class="menu-item" style="color:var(--text2)" onclick="ST.modal=null;render()">Cancelar</button>
+  </div></div>`;
 }
 
 // ─── PANTALLAS DE UNIDAD (header pegajoso) ───────────────────────────────────
