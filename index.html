@@ -168,6 +168,8 @@ body{background:#0C0E10;font-family:Inter,system-ui,sans-serif;color:var(--text)
 .odo-field{margin-bottom:18px}
 .odo-field label{display:block;font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.09em;margin-bottom:7px}
 .odo-field .req{color:var(--accent);font-weight:700}
+.only-desktop{display:none}
+@media(min-width:900px){.only-mobile{display:none}.only-desktop{display:block}}
 </style>
 </head>
 <body>
@@ -265,7 +267,7 @@ function sevPill(sev){ return sev==='seguridad'?'pill-worn':sev==='cosmetico'?'p
 // ─── STATE ───────────────────────────────────────────────────────────────────
 let sb = null;
 let ST = {
-  auth:null, role:null, authEmail:null, busId:null, tab:'status', selTire:null,
+  auth:null, role:null, authEmail:null, busId:null, tab:'resumen', selTire:null,
   action:null, actionParam:null,
   modal:null, logFilter:'all', tirePrePos:null, tirePreEvent:null,
   loginErr:'', saving:false,
@@ -583,7 +585,6 @@ function renderHubShell(){
     </select>`:`<span class="city-badge">${ST.auth==='all'?'Todas':ST.auth.split(',').map(c=>CITIES[c]?.name).filter(Boolean).join(' · ')}</span>`}
     <button class="btn sm${ST.view==='report'?' primary':''}" onclick="navigate(ST.view==='report'?'/':'/reportes')">Reportes</button>
     <button class="btn sm${ST.view==='chequeos'?' primary':''}" onclick="ST.chqHubTab='alertas';navigate(ST.view==='chequeos'?'/':'/chequeos')">Chequeos${ST.chequeos.filter(c=>!c.alerta_atendida).length?`<span class="chq-badge">${ST.chequeos.filter(c=>!c.alerta_atendida).length}</span>`:''}</button>
-    <a class="btn sm" href="/chequeo.html" target="_blank" rel="noopener">+ Chequeo rápido ↗</a>
     <button class="btn sm${ST.view==='compras'?' primary':''}" onclick="navigate(ST.view==='compras'?'/':'/compras')">Compras</button>
     <a class="btn sm" href="/orden-compra.html" target="_blank" rel="noopener">+ Orden de compra ↗</a>
     ${isAdmin?`<button class="btn sm" onclick="ST.modal='bus';render()">+ Unidad</button>`:''}
@@ -638,11 +639,12 @@ function uheadUnit(bus,opts){
     ${left}${odo}
   </div>`;
   if(opts.tabs){
+    // El tab de inspección resuelve su nombre según la línea de la unidad:
+    // Pasaje -> "Chequeos" (chequeos_rapidos), empresarial -> "Checklist".
+    const inspLbl = bus.client==='Pasaje' ? 'Chequeos' : 'Checklist';
     const T=(slug,tab,lbl)=>`<button class="utab${ST.tab===tab?' on':''}" onclick="navigate('/unidad/${uid_}${slug?'/'+slug:''}')">${lbl}</button>`;
-    h+=`<div class="utabs">
-      ${T('','status','Status')}${T('servicio','service','Servicio')}${T('llantas','tires','Llantas')}
-      ${T('reparaciones','repairs','Reparaciones')}${T('checklist','checklist','Checklist')}
-      ${T('chequeo','chequeo','Chequeos')}${T('historial','log','Historial')}
+    h+=`<div class="utabs" style="justify-content:space-around">
+      ${T('','resumen','Resumen')}${T('mantenimiento','mantenimiento','Mantenimiento')}${T('inspecciones','inspecciones',inspLbl)}
     </div>`;
   }
   h+=`</div>`;
@@ -652,18 +654,150 @@ function uheadUnit(bus,opts){
 function renderFichaScreen(bus){
   let h=uheadUnit(bus,{tabs:true});
   h+=`<div class="pad">`;
-  const al=getAlerts(bus);
-  if(al.length) h+=`<div class="alert-bar">⚠ ${al.join(' &nbsp;·&nbsp; ')}</div>`;
-  if(ST.tab==='status')        h+=renderStatus(bus);
-  else if(ST.tab==='service')  h+=renderService(bus);
-  else if(ST.tab==='tires')    h+=renderTires(bus);
-  else if(ST.tab==='repairs')  h+=renderRepairs(bus);
-  else if(ST.tab==='checklist')h+=renderChecklist(bus);
-  else if(ST.tab==='chequeo')  h+=renderChqTab(bus);
-  else if(ST.tab==='log')      h+=renderLog(bus);
+  if(ST.tab==='mantenimiento')     h+=renderMantenimiento(bus);
+  else if(ST.tab==='inspecciones') h+=renderInspecciones(bus);
+  else                             h+=renderResumen(bus);
   h+=`</div>`;
   if(ST.modal==='tire') h+=renderTireModal(bus);   // edición de llanta: modal por ahora
   return h;
+}
+
+// ─── TAB RESUMEN: identidad + alertas accionables + acción primaria + golpes ──
+function renderResumen(bus){
+  const uid_=encodeURIComponent(bus.id);
+  const isAdmin=ST.role==='admin';
+  const esPasaje=bus.client==='Pasaje';
+  // Acción primaria (según línea) + acceso a golpes.
+  let h = esPasaje
+    ? `<a class="btn-primary-lg" style="display:block;text-align:center;text-decoration:none" href="/chequeo.html?unidad=${uid_}" target="_blank" rel="noopener">Iniciar chequeo ↗</a>`
+    : `<button class="btn-primary-lg" onclick="navigate('/unidad/${uid_}/checklist-nuevo')">Iniciar checklist</button>`;
+  const golpes=(bus.open_issues||[]).filter(i=>!i.resolved).length;
+  h+=`<button class="btn-ghost-lg" onclick="navigate('/unidad/${uid_}/golpes')">Ver estado de golpes${golpes?` · ${golpes}`:''}</button>`;
+
+  // Alertas accionables (nunca una raya gris: cada una es un botón que abre captura).
+  const alerts=resumenAlerts(bus);
+  h+=`<div class="grouphead" style="padding-left:2px">Requiere atención</div>`;
+  if(!alerts.length){
+    h+=`<div class="rcard"><div class="empty"><p style="margin:0;color:var(--text2)">Todo al día. Sin acciones pendientes.</p></div></div>`;
+  } else {
+    alerts.forEach(a=>{
+      const open = a.href ? `navigate('${a.href}')` : (a.js||'');
+      h+=`<div class="rcard act" onclick="${open}"><div class="empty">
+        <div><div style="font-weight:600;font-size:14.5px">${a.title}</div>
+          <p style="margin-top:3px;color:var(--text2);font-size:13px">${a.desc}</p></div>
+        <button class="mini${a.solid?' solid':''}" style="border:1px solid var(--accent);color:${a.solid?'var(--accent-ink)':'var(--accent)'};background:${a.solid?'var(--accent)':'none'};border-radius:8px;padding:8px 12px;font-weight:600;white-space:nowrap;min-height:40px" onclick="event.stopPropagation();${open}">${a.cta}</button>
+      </div></div>`;
+    });
+  }
+
+  // Ficha (identidad).
+  const tipo=bus.type==='bus'?'Autobús':bus.type==='txl'?'TXL':'Urvan / Sprinter';
+  h+=`<div class="grouphead" style="padding-left:2px">Ficha</div>
+    <div class="rcard">
+      <div class="kv"><span>Cliente</span><b>${bus.client}</b></div>
+      <div class="kv"><span>Línea</span><b>${esPasaje?'Pasaje':'Empresarial'}</b></div>
+      <div class="kv"><span>Tipo</span><b>${tipo}</b></div>
+      <div class="kv"><span>Ciudad</span><b>${CITIES[bus.city]?.name||bus.city}</b></div>
+      <div class="kv"><span>Odómetro</span><b>${bus.km?fmt(bus.km)+' km':'Sin dato'}</b></div>
+      <div class="kv"><span>Registros</span><b>${busLogs(bus.id).length}</b></div>
+    </div>`;
+  if(isAdmin){
+    h+=`<button class="btn-ghost-lg" onclick="ST.modal='chqQr';ST.chqQrBusId='${bus.id}';render()">QR de chequeo</button>`;
+    h+=`<button class="btn-ghost-lg" style="border-color:rgba(229,72,77,.4);color:var(--red-dark)" onclick="doDelBus('${bus.id}')">Eliminar unidad</button>`;
+  }
+  return h;
+}
+// Deriva las alertas accionables del Resumen (odómetro, aceite, pendientes).
+function resumenAlerts(bus){
+  const uid_=encodeURIComponent(bus.id);
+  const esPasaje=bus.client==='Pasaje';
+  const out=[];
+  if(!bus.km){
+    out.push({title:'Sin odómetro registrado', desc:'Nada se puede calcular hasta capturarlo.',
+      cta:'Capturar', solid:true,
+      js: esPasaje ? `window.open('/chequeo.html?unidad=${uid_}','_blank')` : `navigate('/unidad/${uid_}/checklist-nuevo')`});
+  }
+  applicableServices(bus).forEach(svc=>{
+    const al=getServiceAlertFor(bus,svc.type,svc.interval);
+    const tipoSlug={svc:'motor',svc_trans:'transmision',svc_diff:'diferencial'}[svc.type];
+    if(al.status==='none') out.push({title:`${svc.label} sin registro`, desc:'Registra el último cambio para arrancar el ciclo.', cta:'Registrar', href:`/unidad/${uid_}/aceite/${tipoSlug}`});
+    else if(al.status==='overdue') out.push({title:`${svc.label} vencido`, desc:`${fmt(al.overdueBy)} km pasados.`, cta:'Registrar', solid:true, href:`/unidad/${uid_}/aceite/${tipoSlug}`});
+    else if(al.remaining<=1000) out.push({title:`${svc.label} por vencer`, desc:`Faltan ${fmt(al.remaining)} km.`, cta:'Registrar', href:`/unidad/${uid_}/aceite/${tipoSlug}`});
+  });
+  Object.entries(bus.tires||{}).forEach(([pos,t])=>{ if(t && tireKM(t,bus.km)>=70000) out.push({title:`Llanta ${POS_NAMES[pos]||pos}`, desc:`${fmt(tireKM(t,bus.km))} km recorridos.`, cta:'Ver', href:`/unidad/${uid_}/mantenimiento`}); });
+  const pend=(bus.open_issues||[]).filter(i=>!i.resolved).length;
+  if(pend) out.push({title:`${pend} acción(es) pendiente(s)`, desc:'Reportadas en inspección.', cta:'Ver', href:`/unidad/${uid_}/inspecciones`});
+  return out;
+}
+
+// ─── TAB MANTENIMIENTO: servicio + llantas + reparaciones ────────────────────
+function renderMantenimiento(bus){
+  let h=`<div class="grouphead" style="padding-left:2px">Servicio</div>`;
+  h+=renderService(bus);
+  h+=`<div class="grouphead" style="padding-left:2px">Llantas</div>`;
+  h+=renderTiresBlock(bus);
+  h+=`<div class="grouphead" style="padding-left:2px">Reparaciones</div>`;
+  h+=renderRepairs(bus);
+  return h;
+}
+// Llantas: en móvil lista de posiciones con valor+color; diagrama solo en escritorio.
+function renderTiresBlock(bus){
+  const uid_=encodeURIComponent(bus.id);
+  const tires=bus.tires||{};
+  const positions=bus.type==='bus'?POS_CFG:bus.type==='txl'?POS_CFG.filter(p=>TXL_POS.has(p.id)):POS_CFG.filter(p=>URVAN_POS.has(p.id));
+  // Lista (móvil): posición · km · pill de estado. "Sin registro" es botón.
+  let h=`<div class="only-mobile rcard" style="padding:4px 14px">`;
+  positions.forEach(p=>{
+    const t=tires[p.id];
+    if(!t){
+      h+=`<div class="kv"><span>${POS_NAMES[p.id]||p.id}</span>
+        <button class="mini" style="border:1px solid var(--accent);color:var(--accent);background:none;border-radius:8px;padding:5px 10px;font-weight:600;font-size:12px" onclick="openTireAt('${p.id}')">Instalar</button></div>`;
+    } else {
+      const km=tireKM(t,bus.km);
+      const col=km>=70000?'var(--bad)':km>=50000?'var(--warn)':'var(--ok)';
+      h+=`<div class="kv" style="cursor:pointer" onclick="ST.selTire='${p.id}';render()"><span>${POS_NAMES[p.id]||p.id}</span>
+        <b class="num" style="color:${col}">${fmt(km)} km · ${condLabel(t.cond)}</b></div>`;
+    }
+  });
+  h+=`<button class="btn-ghost-lg" style="margin:8px 0 4px" onclick="ST.modal='tire';ST.tirePrePos=null;render()">+ Evento de llanta</button></div>`;
+  // Detalle de la posición seleccionada (móvil).
+  if(ST.selTire){ h+=`<div class="only-mobile">${renderTireDetailCard(bus,ST.selTire)}</div>`; }
+  // Diagrama (escritorio).
+  h+=`<div class="only-desktop">${renderTires(bus)}</div>`;
+  return h;
+}
+function renderTireDetailCard(bus,sel){
+  const tire=(bus.tires||{})[sel];
+  let h=`<div class="rcard"><div class="cardhead" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b>${POS_NAMES[sel]||sel}</b><button class="btn sm ghost" onclick="ST.selTire=null;render()">Cerrar ✕</button></div>`;
+  if(!tire){
+    h+=`<p style="font-size:13px;color:var(--text2);margin:0 0 10px">Sin llanta registrada en esta posición.</p>
+      <button class="btn-primary-lg" onclick="openTireAt('${sel}')">Instalar llanta aquí</button>`;
+  } else {
+    const km=tireKM(tire,bus.km);
+    h+=`<div class="kv"><span>Estado</span><b>${condLabel(tire.cond)}</b></div>
+      <div class="kv"><span>Marca / Medida</span><b>${tire.brand||'—'}</b></div>
+      <div class="kv"><span>Instalada</span><b>${tire.installDate||tire.install_date||'—'}</b></div>
+      <div class="kv"><span>KM recorridos</span><b class="num" style="color:${km>=70000?'var(--bad)':km>=50000?'var(--warn)':'var(--ok)'}">${fmt(km)}</b></div>
+      <div style="display:flex;gap:7px;margin-top:12px">
+        <button class="btn" style="flex:1" onclick="openTireAction('${sel}','rotate')">Rotar</button>
+        <button class="btn" style="flex:1" onclick="openTireAction('${sel}','new')">Reemplazar</button>
+        <button class="btn danger" style="flex:1" onclick="openTireAction('${sel}','retire')">Baja</button>
+      </div>`;
+  }
+  h+=`</div>`;
+  return h;
+}
+
+// ─── TAB INSPECCIONES: resuelve formato por línea de la unidad ────────────────
+function renderInspecciones(bus){
+  const uid_=encodeURIComponent(bus.id);
+  if(bus.client==='Pasaje'){
+    let h=`<a class="btn-primary-lg" style="display:block;text-align:center;text-decoration:none" href="/chequeo.html?unidad=${uid_}" target="_blank" rel="noopener">Iniciar chequeo ↗</a>`;
+    h+=`<div class="rcard" style="border-left:2px solid var(--accent);font-size:12.5px;color:var(--text2);line-height:1.5">El <b style="color:var(--accent)">chequeo rápido</b> se llena desde su liga pública en las bases — aquí solo se consulta. Sus fotos y golpes caen en el mismo expediente de la unidad.</div>`;
+    h+=renderChqTab(bus);
+    return h;
+  }
+  return renderChecklist(bus);
 }
 
 // Cada acción es su propia pantalla: header pegajoso arriba, formulario, y la
@@ -1867,7 +2001,8 @@ async function doSaveTire(busId){
       bus.km=prevKm; bus.tires=prevTires; ST.logs=ST.logs.filter(l=>l.id!==log.id);
       ST.saving=false; ST.modalErr='Error al guardar. Intenta de nuevo.'; render(); return;
     }
-    ST.saving=false; ST.modal=null; ST.tirePrePos=null; ST.tirePreEvent=null; ST.modalErr=''; ST.selTire=dest; ST.tab='tires';
+    ST.saving=false; ST.modal=null; ST.tirePrePos=null; ST.tirePreEvent=null; ST.modalErr=''; ST.selTire=dest;
+    navigate('/unidad/'+encodeURIComponent(busId)+'/mantenimiento');
     showToast(`Rotación guardada: ${POS_NAMES[pos]} ${arrow} ${POS_NAMES[dest]}`);
     return;
   }
@@ -1887,7 +2022,8 @@ async function doSaveTire(busId){
     ST.logs=ST.logs.filter(l=>l.id!==logEntry.id);
     ST.saving=false; ST.modalErr='Error al guardar. Intenta de nuevo.'; render(); return;
   }
-  ST.saving=false; ST.modal=null; ST.tirePrePos=null; ST.tirePreEvent=null; ST.modalErr=''; ST.selTire=pos; ST.tab='tires'; render();
+  ST.saving=false; ST.modal=null; ST.tirePrePos=null; ST.tirePreEvent=null; ST.modalErr=''; ST.selTire=pos;
+  navigate('/unidad/'+encodeURIComponent(busId)+'/mantenimiento');
 }
 
 async function doSaveBus(){
@@ -2151,11 +2287,13 @@ function exportCSV(){
 // popstate (botón atrás del navegador y gesto de atrás del celular) re-deriva el
 // estado desde la URL. Los links directos abren esa pantalla con esa unidad.
 // Producción: vercel.json reescribe las rutas sin extensión a index.html.
-const TAB_SLUGS = {  // slug en la URL  ->  ST.tab interno
-  status:'status', servicio:'service', llantas:'tires', reparaciones:'repairs',
-  checklist:'checklist', chequeo:'chequeo', historial:'log'
+const TAB_SLUGS = {  // slug en la URL  ->  ST.tab interno (3 tabs; resumen = default sin slug)
+  mantenimiento:'mantenimiento', inspecciones:'inspecciones'
 };
 const TAB_SLUG_BY_TAB = Object.fromEntries(Object.entries(TAB_SLUGS).map(([slug,tab])=>[tab,slug]));
+// Slugs viejos (7 tabs, antes de consolidar) -> tab nuevo, para no romper links.
+const LEGACY_TAB = { status:'resumen', servicio:'mantenimiento', llantas:'mantenimiento',
+  reparaciones:'mantenimiento', checklist:'inspecciones', chequeo:'inspecciones', historial:'inspecciones' };
 const HUB_SLUGS   = { reportes:'report', chequeos:'chequeos', compras:'compras' };
 const HUB_SLUG_BY_VIEW = Object.fromEntries(Object.entries(HUB_SLUGS).map(([slug,view])=>[view,slug]));
 const ACEITE_SLUGS = { motor:'svc', transmision:'svc_trans', diferencial:'svc_diff' };
@@ -2170,10 +2308,11 @@ function parsePath(pathname){
   if(seg[0]==='unidad' && seg[1]){
     const r={view:'fleet', busId:seg[1]};
     const sub=seg[2];
-    if(!sub){ r.tab='status'; return r; }
+    if(!sub){ r.tab='resumen'; return r; }
     if(TAB_SLUGS[sub]){ r.tab=TAB_SLUGS[sub]; return r; }
     if(ACTION_SLUGS.has(sub)){ r.action=sub; if(sub==='aceite'&&seg[3]) r.actionParam=seg[3]; return r; }
-    r.tab='status'; return r;
+    if(LEGACY_TAB[sub]){ r.tab=LEGACY_TAB[sub]; return r; }
+    r.tab='resumen'; return r;
   }
   return {view:'fleet'};
 }
@@ -2183,7 +2322,7 @@ function pathForState(){
   if(ST.busId){
     let p='/unidad/'+encodeURIComponent(ST.busId);
     if(ST.action){ p+='/'+ST.action; if(ST.action==='aceite'&&ST.actionParam) p+='/'+ST.actionParam; }
-    else if(ST.tab && ST.tab!=='status') p+='/'+(TAB_SLUG_BY_TAB[ST.tab]||ST.tab);
+    else if(ST.tab && ST.tab!=='resumen') p+='/'+(TAB_SLUG_BY_TAB[ST.tab]||ST.tab);
     return p;
   }
   return HUB_SLUG_BY_VIEW[ST.view] ? '/'+HUB_SLUG_BY_VIEW[ST.view] : '/';
@@ -2193,7 +2332,7 @@ function applyRoute(){
   const r=parsePath(location.pathname);
   ST.view=r.view||'fleet';
   ST.busId=r.busId||null;
-  ST.tab=r.tab||'status';
+  ST.tab=r.tab||'resumen';
   ST.action=r.action||null;
   ST.actionParam=r.actionParam||null;
   ST.selService = (r.action==='aceite') ? (ACEITE_SLUGS[r.actionParam]||null) : null;
