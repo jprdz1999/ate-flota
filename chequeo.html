@@ -39,7 +39,7 @@ const CHQ_DIAGRAM_W=400, CHQ_DIAGRAM_H=170;
 let sb = null;
 let ST = {
   auth:null, role:null, authEmail:null, saving:false, loginErr:'',
-  buses:[], bases:[], operadores:[], operadorAlias:[], chequeos:[],
+  buses:[], bases:[], operadores:[], operadorAlias:[], chequeos:[], danos:[],
   toast:null, toastType:null,
 
   chqDeepLinkBusId:null,
@@ -82,17 +82,25 @@ function consumeDeepLink(){
 
 // ─── DATA LAYER ──────────────────────────────────────────────────────────────
 async function loadData(){
-  const [r1,r2,r3,r4,r5]=await Promise.all([
+  const [r1,r2,r3,r4,r5,r6]=await Promise.all([
     sb.from('buses').select('*'),
     sb.from('bases').select('*'),
     sb.from('operadores').select('*'),
     sb.from('operador_alias').select('*'),
     sb.from('chequeos_rapidos').select('*').order('fecha',{ascending:false}),
+    sb.from('danos').select('*').eq('estado','activo'),
   ]);
-  const err=r1.error||r2.error||r3.error||r4.error||r5.error;
+  const err=r1.error||r2.error||r3.error||r4.error||r5.error||r6.error;
   if(err) return {error:err.message};
-  ST.buses=r1.data||[]; ST.bases=r2.data||[]; ST.operadores=r3.data||[]; ST.operadorAlias=r4.data||[]; ST.chequeos=r5.data||[];
+  ST.buses=r1.data||[]; ST.bases=r2.data||[]; ST.operadores=r3.data||[]; ST.operadorAlias=r4.data||[]; ST.chequeos=r5.data||[]; ST.danos=r6.data||[];
   return {error:null};
+}
+function activeDanos(busId){ return ST.danos.filter(d=>d.bus_id===busId && d.estado==='activo'); }
+async function dbInsertDanos(rows){
+  if(!sb) return {error:'Sin conexión'};
+  if(!rows.length) return {error:null};
+  const {error}=await sb.from('danos').insert(rows);
+  return {error};
 }
 async function dbSaveChequeo(chq){
   if(!sb) return {error:'Sin conexión'};
@@ -256,7 +264,8 @@ function openCapture(busId){
   // staff hace varios chequeos seguidos sin cambiar de base — mantenerlo
   // preseleccionado ahorra un tap por unidad.
   ST.chqPhotos={}; ST.chqPhotoPreviews={}; ST.chqUploadProgress={};
-  ST.chqPrevPins=prev?.marcas_acumuladas||[];
+  // Precarga en gris los golpes ya registrados (expediente acumulado de la unidad).
+  ST.chqPrevPins=activeDanos(busId).map(d=>({x:Number(d.x),y:Number(d.y),descripcion:d.descripcion,severidad:d.severidad}));
   ST.chqPins=[]; ST.chqPinDraft=null;
   ST.chqOperadorText=''; ST.chqOperadorMatches=[]; ST.chqOperadorResolvedId=null; ST.chqOperadorConfirmingAlias=null;
   ST.chqErr='';
@@ -528,7 +537,7 @@ async function doSaveChequeo(){
 
   const prev=getUltimoChequeoPrevio(ST.chqBusId);
   const marcasNuevas=ST.chqPins;
-  const marcasAcumuladas=[...(prev?.marcas_acumuladas||[]), ...marcasNuevas];
+  const marcasAcumuladas=[...ST.chqPrevPins, ...marcasNuevas];
   const danoNuevo=marcasNuevas.length>0;
   const severidadMaxima=marcasNuevas.some(p=>p.severidad==='seguridad')?'seguridad':(marcasNuevas.length?'cosmetico':null);
 
@@ -565,6 +574,19 @@ async function doSaveChequeo(){
     bus.km=km;
     const {error:eKm}=await dbUpdateBusKm(bus.id, km);
     if(eKm){ bus.km=prevBusKm; showToast('Chequeo guardado, pero no se pudo actualizar el odómetro de la unidad.','error'); }
+  }
+  // Golpes nuevos -> filas en el expediente `danos`, con la ventana de tiempo y
+  // el operador a cargo (para rastrear "apareció entre base X y base Y").
+  if(marcasNuevas.length){
+    const danoRows=marcasNuevas.map(p=>({
+      id:uid(), bus_id:ST.chqBusId, x:p.x, y:p.y, descripcion:p.descripcion, severidad:p.severidad,
+      fotos:[], estado:'activo', origen:'chequeo', inspeccion_id:chq.id,
+      operador_texto:operadorTexto, base_id:ST.chqBase, detectado_ts:chq.ts,
+      prev_base_id:prev?.base_id||null, prev_ts:prev?.ts||null, fecha_deteccion:today()
+    }));
+    const {error:eD}=await dbInsertDanos(danoRows);
+    if(eD) showToast('Chequeo guardado, pero no se registraron los golpes nuevos.','error');
+    else ST.danos.push(...danoRows);
   }
   ST.saving=false;
   ST.chqLastResult={busName:bus.name, danoNuevo, severidadMaxima};

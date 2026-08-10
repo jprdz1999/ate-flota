@@ -274,9 +274,10 @@ let ST = {
   adminFilter:'all', buses:[], logs:[], toast:null, toastType:null, modalErr:'',
   view:'fleet', rptBus:'all', rptType:'all', rptFrom:'', rptTo:'',
   clView:'history', svcErrType:null, selService:null,
+  clPrevPins:[], clPins:[], clPinDraft:null,   // diagrama de golpes en el checklist
 
   // ─── Mini-Chequeos (solo lectura — la captura vive en chequeo.html) ───
-  bases:[], operadores:[], operadorAlias:[], chequeos:[],
+  bases:[], operadores:[], operadorAlias:[], chequeos:[], danos:[],
   chqSignedUrlCache:{},
   chqHubTab:'alertas', chqZonaSel:null, chqZonaBusId:'all', chqOpReportOperadorId:'all',
   chqTimelineSel:null,
@@ -348,21 +349,86 @@ async function dbDeleteBus(id){
 
 // ─── MINI-CHEQUEOS: DATA LAYER ───────────────────────────────────────────────
 async function loadChequeosData(){
-  const [r1,r2,r3,r4]=await Promise.all([
+  const [r1,r2,r3,r4,r5]=await Promise.all([
     sb.from('bases').select('*'),
     sb.from('operadores').select('*'),
     sb.from('operador_alias').select('*'),
     sb.from('chequeos_rapidos').select('*').order('fecha',{ascending:false}),
+    sb.from('danos').select('*').order('detectado_ts',{ascending:false}),
   ]);
-  const err=r1.error||r2.error||r3.error||r4.error;
+  const err=r1.error||r2.error||r3.error||r4.error||r5.error;
   if(err) return {error:err.message};
-  ST.bases=r1.data||[]; ST.operadores=r2.data||[]; ST.operadorAlias=r3.data||[]; ST.chequeos=r4.data||[];
+  ST.bases=r1.data||[]; ST.operadores=r2.data||[]; ST.operadorAlias=r3.data||[]; ST.chequeos=r4.data||[]; ST.danos=r5.data||[];
   return {error:null};
 }
 async function dbAttendAlerta(id){
   if(!sb) return {error:'Sin conexión'};
   const {error}=await sb.from('chequeos_rapidos').update({alerta_atendida:true}).eq('id',id);
   return {error};
+}
+// ─── GOLPES / DAÑOS: DATA LAYER ──────────────────────────────────────────────
+function busDanos(busId){ return ST.danos.filter(d=>d.bus_id===busId).sort((a,b)=>(b.detectado_ts||0)-(a.detectado_ts||0)); }
+function activeDanos(busId){ return busDanos(busId).filter(d=>d.estado==='activo'); }
+async function dbUpdateDano(id, patch){
+  if(!sb) return {error:'Sin conexión'};
+  const {error}=await sb.from('danos').update(patch).eq('id',id);
+  return {error};
+}
+async function dbInsertDanos(rows){
+  if(!sb) return {error:'Sin conexión'};
+  if(!rows.length) return {error:null};
+  const {error}=await sb.from('danos').insert(rows);
+  return {error};
+}
+// Diagrama de golpes DENTRO del checklist. Usa actualización dirigida de #cl-golpes
+// (no render() completo) para no resetear los toggles B/M/NA del formulario.
+function clDiagramSilhouette(interactive){
+  const W=400,H=170;
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block${interactive?';cursor:crosshair':''}" ${interactive?'onclick="clDiagramTap(event)"':''}>
+    <rect x="0" y="0" width="${W}" height="${H}" fill="var(--surface-2)" pointer-events="all"/>
+    <text x="57" y="18" text-anchor="middle" font-size="11" font-weight="600" fill="var(--text3)" font-family="-apple-system,sans-serif">FRENTE</text>
+    <text x="343" y="18" text-anchor="middle" font-size="11" font-weight="600" fill="var(--text3)" font-family="-apple-system,sans-serif">TRASERA</text>
+    <rect x="25" y="35" width="355" height="100" rx="26" fill="var(--surface)" stroke="var(--border2)" stroke-width="1.5"/>
+    <rect x="34" y="43" width="36" height="84" fill="var(--bg2)"/>
+    ${[100,133,166,199,232,265,298,331].map(x=>`<rect x="${x}" y="43" width="24" height="17" rx="3" fill="var(--bg2)"/><rect x="${x}" y="110" width="24" height="17" rx="3" fill="var(--bg2)"/>`).join('')}`;
+}
+function renderClGolpesInner(){
+  const W=400,H=170, prev=ST.clPrevPins||[], pins=ST.clPins||[], draft=ST.clPinDraft;
+  let h=`<div style="background:var(--surface-2);border-radius:12px;padding:12px 8px">${clDiagramSilhouette(true)}`;
+  if(draft){ const cx=draft.x/100*W, cy=draft.y/100*H; h+=`<circle cx="${cx}" cy="${cy}" r="7" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="3 2"/>`; }
+  prev.forEach(p=>{ const cx=Number(p.x)/100*W, cy=Number(p.y)/100*H; h+=`<circle cx="${cx}" cy="${cy}" r="7" fill="var(--text3)" opacity="0.6" stroke="var(--bg)" stroke-width="1.5"><title>${escHtml(p.descripcion)} (ya registrado)</title></circle>`; });
+  pins.forEach(p=>{ const cx=Number(p.x)/100*W, cy=Number(p.y)/100*H; const fill=p.severidad==='seguridad'?'var(--bad)':'var(--warn)'; h+=`<g onclick="event.stopPropagation();clRemovePin('${p.id}')"><circle cx="${cx}" cy="${cy}" r="8" fill="${fill}" stroke="var(--bg)" stroke-width="1.5"><title>${escHtml(p.descripcion)} (tocar para quitar)</title></circle></g>`; });
+  h+=`</svg><div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;font-size:11px;color:var(--text2);margin-top:6px">
+    <span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--text3);opacity:.6;margin-right:5px"></span>Ya registrado</span>
+    <span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--warn);margin-right:5px"></span>Nuevo · Cosmético</span>
+    <span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--bad);margin-right:5px"></span>Nuevo · Seguridad</span>
+  </div></div>`;
+  if(draft){
+    h+=`<div class="rcard" style="margin-top:10px">
+      <div class="form-row"><label>Descripción del daño nuevo *</label><input type="text" id="cl-pin-desc" placeholder="Ej: Rayón en puerta lateral"></div>
+      <div class="form-row"><label>Severidad</label><select id="cl-pin-sev"><option value="cosmetico">Cosmético</option><option value="seguridad">Seguridad</option></select></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn" onclick="clCancelPin()">Cancelar</button>
+        <button class="btn primary" onclick="clSavePin()">Agregar marca</button>
+      </div></div>`;
+  }
+  return h;
+}
+function clRefreshGolpes(){ const el=document.getElementById('cl-golpes'); if(el) el.innerHTML=renderClGolpesInner(); }
+function clDiagramTap(e){
+  const svg=e.currentTarget.closest('svg'); const rect=svg.getBoundingClientRect();
+  const x=Math.max(0,Math.min(100,(e.clientX-rect.left)/rect.width*100));
+  const y=Math.max(0,Math.min(100,(e.clientY-rect.top)/rect.height*100));
+  ST.clPinDraft={x:Math.round(x*10)/10, y:Math.round(y*10)/10}; clRefreshGolpes();
+}
+function clRemovePin(id){ ST.clPins=ST.clPins.filter(p=>p.id!==id); clRefreshGolpes(); }
+function clCancelPin(){ ST.clPinDraft=null; clRefreshGolpes(); }
+function clSavePin(){
+  const desc=(document.getElementById('cl-pin-desc')?.value||'').trim();
+  if(!desc){ const el=document.getElementById('cl-pin-desc'); if(el){ el.style.borderColor='var(--red)'; el.focus(); } return; }
+  const sev=document.getElementById('cl-pin-sev')?.value||'cosmetico';
+  ST.clPins.push({id:uid(), x:ST.clPinDraft.x, y:ST.clPinDraft.y, descripcion:desc, severidad:sev});
+  ST.clPinDraft=null; clRefreshGolpes();
 }
 // ─── ÓRDENES DE COMPRA: DATA LAYER ───────────────────────────────────────────
 async function loadComprasData(){
@@ -671,7 +737,7 @@ function renderResumen(bus){
   let h = esPasaje
     ? `<a class="btn-primary-lg" style="display:block;text-align:center;text-decoration:none" href="/chequeo.html?unidad=${uid_}" target="_blank" rel="noopener">Iniciar chequeo ↗</a>`
     : `<button class="btn-primary-lg" onclick="navigate('/unidad/${uid_}/checklist-nuevo')">Iniciar checklist</button>`;
-  const golpes=(bus.open_issues||[]).filter(i=>!i.resolved).length;
+  const golpes=activeDanos(bus.id).length;
   h+=`<button class="btn-ghost-lg" onclick="navigate('/unidad/${uid_}/golpes')">Ver estado de golpes${golpes?` · ${golpes}`:''}</button>`;
 
   // Alertas accionables (nunca una raya gris: cada una es un botón que abre captura).
@@ -712,6 +778,12 @@ function resumenAlerts(bus){
   const uid_=encodeURIComponent(bus.id);
   const esPasaje=bus.client==='Pasaje';
   const out=[];
+  // Golpe nuevo -> alerta (la función de mayor valor: detectar daño nuevo).
+  const nuevosHoy=activeDanos(bus.id).filter(d=>d.fecha_deteccion===today());
+  if(nuevosHoy.length){
+    const seg=nuevosHoy.some(d=>d.severidad==='seguridad');
+    out.push({title:`${nuevosHoy.length} golpe(s) nuevo(s) hoy`, desc:seg?'Incluye severidad de seguridad.':'Detectado en inspección.', cta:'Ver', solid:true, href:`/unidad/${uid_}/golpes`});
+  }
   if(!bus.km){
     out.push({title:'Sin odómetro registrado', desc:'Nada se puede calcular hasta capturarlo.',
       cta:'Capturar', solid:true,
@@ -800,11 +872,87 @@ function renderInspecciones(bus){
   return renderChecklist(bus);
 }
 
+// ─── GOLPES: expediente acumulado por unidad ─────────────────────────────────
+function renderDanosDiagram(danos){
+  const W=400,H=170;
+  let h=`<div style="background:var(--surface-2);border-radius:12px;padding:12px 8px;margin-bottom:12px"><svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block">
+    <text x="57" y="18" text-anchor="middle" font-size="11" font-weight="600" fill="var(--text3)" font-family="-apple-system,sans-serif">FRENTE</text>
+    <text x="343" y="18" text-anchor="middle" font-size="11" font-weight="600" fill="var(--text3)" font-family="-apple-system,sans-serif">TRASERA</text>
+    <rect x="25" y="35" width="355" height="100" rx="26" fill="var(--surface)" stroke="var(--border2)" stroke-width="1.5"/>
+    <rect x="34" y="43" width="36" height="84" fill="var(--bg2)"/>
+    ${[100,133,166,199,232,265,298,331].map(x=>`<rect x="${x}" y="43" width="24" height="17" rx="3" fill="var(--bg2)"/><rect x="${x}" y="110" width="24" height="17" rx="3" fill="var(--bg2)"/>`).join('')}`;
+  danos.forEach((d,i)=>{
+    const cx=Number(d.x)/100*W, cy=Number(d.y)/100*H;
+    const fill=d.severidad==='seguridad'?'var(--bad)':'var(--warn)';
+    h+=`<g><circle cx="${cx}" cy="${cy}" r="9" fill="${fill}" stroke="var(--bg)" stroke-width="1.5"/>
+      <text x="${cx}" y="${cy+3.5}" text-anchor="middle" font-size="9" font-weight="700" fill="#241C05" font-family="Roboto Mono">${i+1}</text></g>`;
+  });
+  h+=`</svg></div>`;
+  return h;
+}
+function danoRow(d, num){
+  const nuevoHoy = d.estado==='activo' && d.fecha_deteccion===today();
+  const sevPill = d.severidad==='seguridad'?'b-bad':'b-warn';
+  const baseNom = id => (ST.bases.find(b=>b.id===id)?.nombre)||id||'—';
+  const hhmm = ts => ts?new Date(Number(ts)).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}):'—';
+  const origen = d.origen==='checklist'?'checklist':'chequeo rápido';
+  const attr = `${d.fecha_deteccion} · ${origen}${d.base_id?' base '+escHtml(baseNom(d.base_id)):''}${d.operador_texto?' · Op. '+escHtml(d.operador_texto):''}`;
+  const ventana = (d.prev_ts && d.detectado_ts)
+    ? `Apareció entre ${escHtml(baseNom(d.prev_base_id))} (${hhmm(d.prev_ts)}) y ${escHtml(baseNom(d.base_id))} (${hhmm(d.detectado_ts)}).` : '';
+  const dn = num!=null
+    ? `<div style="width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;flex:0 0 auto;font-family:'Roboto Mono';margin-top:2px;background:${d.severidad==='seguridad'?'var(--bad)':'var(--warn)'};color:#241C05">${num}</div>`
+    : `<div style="width:22px;flex:0 0 auto"></div>`;
+  return `<div style="display:flex;gap:11px;padding:12px 0;border-bottom:1px solid var(--line)">${dn}<div style="flex:1;min-width:0">
+    <div style="font-size:13.5px;font-weight:600;display:flex;gap:7px;align-items:center;flex-wrap:wrap">${escHtml(d.descripcion)}
+      <span class="badge ${sevPill}">${d.severidad==='seguridad'?'Seguridad':'Cosmético'}</span>
+      ${nuevoHoy?`<span class="badge b-bad">Nuevo</span>`:''}
+      ${d.estado==='reparado'?`<span class="badge b-ok">Reparado</span>`:''}</div>
+    <p style="margin:3px 0 0;font-size:11.5px;color:var(--text3)">${attr}</p>
+    ${ventana?`<p style="margin:4px 0 0;font-size:11.5px;color:var(--text2)">${ventana}</p>`:''}
+    ${d.estado==='reparado'&&d.reparado_fecha?`<p style="margin:3px 0 0;font-size:11.5px;color:var(--text3)">Reparado ${d.reparado_fecha}${d.reparado_nota?' · '+escHtml(d.reparado_nota):''}</p>`:''}
+    ${d.estado==='activo'?`<button class="btn sm" style="margin-top:7px" onclick="doMarcarReparado('${d.id}')">Marcar reparado ✓</button>`:''}
+  </div></div>`;
+}
+function renderGolpes(bus){
+  const uid_=encodeURIComponent(bus.id);
+  const activos=activeDanos(bus.id);
+  const reparados=busDanos(bus.id).filter(d=>d.estado==='reparado');
+  const nuevoHoy=activos.filter(d=>d.fecha_deteccion===today()).length;
+  let h=uheadUnit(bus,{title:'Estado de golpes', backTo:'/unidad/'+uid_, odo:false});
+  h+=`<div class="pad" style="padding-bottom:40px">`;
+  h+=`<div class="rcard" style="border-left:2px solid var(--accent);font-size:12.5px;color:var(--text2);line-height:1.5">Este es el <b style="color:var(--accent)">expediente acumulado</b> de la unidad, no la foto de un chequeo. Cada inspección se compara contra este estado — así "golpe nuevo" significa algo.</div>`;
+  if(!activos.length && !reparados.length){
+    h+=`<div class="rcard"><div class="empty"><p style="margin:0;color:var(--text2)">Sin golpes registrados en esta unidad.</p></div></div></div>`;
+    return h;
+  }
+  if(activos.length) h+=renderDanosDiagram(activos);
+  h+=`<div class="grouphead" style="padding-left:2px">Activos <b>${activos.length}</b>${nuevoHoy?` · ${nuevoHoy} nuevo(s) hoy`:''}</div>`;
+  h+=`<div class="rcard" style="padding:4px 14px">${activos.length?activos.map((d,i)=>danoRow(d,i+1)).join(''):`<p style="color:var(--text2);font-size:13px;padding:8px 0;margin:0">Ninguno activo.</p>`}</div>`;
+  if(reparados.length){
+    h+=`<div class="grouphead" style="padding-left:2px">Reparados <b>${reparados.length}</b></div>`;
+    h+=`<div class="rcard" style="padding:4px 14px">${reparados.map(d=>danoRow(d,null)).join('')}</div>`;
+  }
+  h+=`</div>`;
+  return h;
+}
+async function doMarcarReparado(id){
+  const d=ST.danos.find(x=>x.id===id);
+  if(!d||d.estado!=='activo') return;
+  if(!confirm('¿Marcar este golpe como reparado?')) return;
+  const prevEstado=d.estado, prevFecha=d.reparado_fecha;
+  d.estado='reparado'; d.reparado_fecha=today();
+  render();
+  const {error}=await dbUpdateDano(id,{estado:'reparado', reparado_fecha:today()});
+  if(error){ d.estado=prevEstado; d.reparado_fecha=prevFecha; showToast('Error al actualizar. Intenta de nuevo.','error'); render(); }
+  else showToast('Golpe marcado como reparado');
+}
+
 // Cada acción es su propia pantalla: header pegajoso arriba, formulario, y la
 // barra de guardar SIEMPRE pegajosa abajo (nunca al final del scroll).
 function renderActionScreen(bus){
   const uid_=encodeURIComponent(bus.id);
   const A=ST.action;
+  if(A==='golpes') return renderGolpes(bus);   // pantalla de consulta, sin barra de guardar
   let title='', body='', save='', backTo='/unidad/'+uid_;
   if(A==='aceite'){
     const svcType=ACEITE_SLUGS[ST.actionParam]||'svc';
@@ -903,6 +1051,8 @@ function checklistBody(bus){
     <div class="cl-section"><div class="cl-sec-hdr">Niveles <span style="font-size:10px;font-weight:400;text-transform:none;letter-spacing:0">B / M / NA</span></div>${clBMNRow('cl-niveles',CL_NIVELES)}</div>
     <div class="form-row"><label>Reparaciones o acciones requeridas</label>
       <textarea id="cl-reparaciones" rows="2" placeholder="Listar trabajos pendientes — se agregarán como acciones a resolver…"></textarea></div>
+    <div class="cl-section"><div class="cl-sec-hdr">¿Golpe nuevo? — marca solo lo que no aparezca en gris</div>
+      <div id="cl-golpes">${renderClGolpesInner()}</div></div>
     <div id="cl-form-err" class="modal-err" style="display:none;margin-top:8px"></div>`;
 }
 
@@ -2234,6 +2384,21 @@ async function doSaveChecklist(busId){
     ST.saving=false; ST.clView='form'; render();
     showClErr('Error al guardar. Intenta de nuevo.'); return;
   }
+  // Golpes nuevos marcados en el checklist -> expediente `danos` (origen checklist).
+  if(ST.clPins.length){
+    const clLogs=busLogs(busId).filter(l=>l.type==='checklist');
+    const prevCl=clLogs[1]||null;  // clLogs[0] es el que acabamos de agregar
+    const danoRows=ST.clPins.map(p=>({
+      id:uid(), bus_id:busId, x:p.x, y:p.y, descripcion:p.descripcion, severidad:p.severidad,
+      fotos:[], estado:'activo', origen:'checklist', inspeccion_id:log.id,
+      operador_texto:conductor, base_id:null, detectado_ts:log.ts,
+      prev_base_id:null, prev_ts:prevCl?.ts||null, fecha_deteccion:fecha
+    }));
+    const {error:eD}=await dbInsertDanos(danoRows);
+    if(eD) showToast('Inspección guardada, pero no se registraron los golpes nuevos.','error');
+    else ST.danos.push(...danoRows);
+    ST.clPins=[];
+  }
   ST.saving=false; ST.clView='history';
   navigate('/unidad/'+encodeURIComponent(busId)+'/checklist');
   showToast(`Inspección ${data.passed?'aprobada ✓':'con observaciones'} guardada`);
@@ -2337,6 +2502,11 @@ function applyRoute(){
   ST.actionParam=r.actionParam||null;
   ST.selService = (r.action==='aceite') ? (ACEITE_SLUGS[r.actionParam]||null) : null;
   ST.selTire=null; ST.modal=null; ST.modalErr='';
+  // Al entrar a una inspección de checklist, precarga golpes activos (gris) y limpia los nuevos.
+  if(r.action==='checklist-nuevo' && r.busId){
+    ST.clPrevPins=activeDanos(r.busId).map(d=>({x:Number(d.x),y:Number(d.y),descripcion:d.descripcion,severidad:d.severidad}));
+    ST.clPins=[]; ST.clPinDraft=null;
+  }
 }
 
 // Navegación central: todo cambio de PANTALLA pasa por aquí para que el
