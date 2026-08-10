@@ -6,7 +6,10 @@
 <title>Grupo ATE — Control de Flota</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-<link rel="stylesheet" href="shared.css">
+<link rel="stylesheet" href="/shared.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
 .fleet-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-bottom:1.25rem}
 .bus-chip{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:10px 14px;cursor:pointer;transition:border-color 0.12s}
@@ -89,8 +92,8 @@
 /* ═══════════════════════════════════════════════════════════════════════════
    REDISEÑO — Sistema visual (mockup ate-flota-rediseno.html). Override local:
    solo aplica a index.html; shared.css intacto para chequeo/orden-compra.
+   Tipografías: se cargan vía <link> en <head> (no @import, que debe ir primero).
    ═══════════════════════════════════════════════════════════════════════════ */
-@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;700&display=swap');
 :root{
   --bg:#141618;--bg2:#1D2023;--bg3:#25292D;
   --surface:#1D2023;--surface-2:#25292D;--line:#31363B;
@@ -556,10 +559,16 @@ async function doLogout(){
 }
 
 function renderApp(){
-  const buses=cityBuses();
   const bus=ST.busId?ST.buses.find(b=>b.id===ST.busId):null;
-  const isAdmin=ST.role==='admin';
+  // Rutas de unidad = pantalla completa con su propio header pegajoso.
+  if(bus && ST.action) return renderActionScreen(bus);
+  if(bus)              return renderFichaScreen(bus);
+  return renderHubShell();  // home / reportes / chequeos / compras
+}
 
+function renderHubShell(){
+  const buses=cityBuses();
+  const isAdmin=ST.role==='admin';
   let h=`<div class="nav">
     <button class="btn sm ghost" onclick="navigate('/')" title="Inicio">⌂ Inicio</button>
     <span class="nav-brand">Grupo ATE — Flota</span>
@@ -569,25 +578,22 @@ function renderApp(){
     </select>`:`<span class="city-badge">${ST.auth==='all'?'Todas':ST.auth.split(',').map(c=>CITIES[c]?.name).filter(Boolean).join(' · ')}</span>`}
     <button class="btn sm${ST.view==='report'?' primary':''}" onclick="navigate(ST.view==='report'?'/':'/reportes')">Reportes</button>
     <button class="btn sm${ST.view==='chequeos'?' primary':''}" onclick="ST.chqHubTab='alertas';navigate(ST.view==='chequeos'?'/':'/chequeos')">Chequeos${ST.chequeos.filter(c=>!c.alerta_atendida).length?`<span class="chq-badge">${ST.chequeos.filter(c=>!c.alerta_atendida).length}</span>`:''}</button>
-    <a class="btn sm" href="chequeo.html" target="_blank" rel="noopener">+ Chequeo rápido ↗</a>
+    <a class="btn sm" href="/chequeo.html" target="_blank" rel="noopener">+ Chequeo rápido ↗</a>
     <button class="btn sm${ST.view==='compras'?' primary':''}" onclick="navigate(ST.view==='compras'?'/':'/compras')">Compras</button>
-    <a class="btn sm" href="orden-compra.html" target="_blank" rel="noopener">+ Orden de compra ↗</a>
+    <a class="btn sm" href="/orden-compra.html" target="_blank" rel="noopener">+ Orden de compra ↗</a>
     ${isAdmin?`<button class="btn sm" onclick="ST.modal='bus';render()">+ Unidad</button>`:''}
     <button class="btn sm ghost" onclick="doLogout()">Salir</button>
   </div>`;
 
-  if(ST.view==='report'){
-    h+=renderReport();
-  } else if(ST.view==='chequeos'){
-    h+=renderChqHub();
-  } else if(ST.view==='compras'){
-    h+=renderComprasHub();
-  } else {
+  if(ST.view==='report')        h+=renderReport();
+  else if(ST.view==='chequeos') h+=renderChqHub();
+  else if(ST.view==='compras')  h+=renderComprasHub();
+  else {
     const shown=isAdmin&&ST.adminFilter!=='all'?buses.filter(b=>b.city===ST.adminFilter):buses;
     h+=`<div class="fleet-grid">`;
     shown.forEach(b=>{
       const ind=getFleetIndicators(b);
-      h+=`<div class="bus-chip${ST.busId===b.id?' active':''}" onclick="selectBus('${b.id}')">
+      h+=`<div class="bus-chip" onclick="selectBus('${b.id}')">
         <div class="cn">${b.name}</div>
         <div class="status-bar">
           <span class="ind ind-${ind.oil}" title="${ind.oilTip}"></span>
@@ -599,36 +605,162 @@ function renderApp(){
     });
     if(isAdmin) h+=`<div class="bus-chip chip-add" onclick="ST.modal='bus';render()">+ Nueva unidad</div>`;
     h+=`</div>`;
-    if(!bus){
-      h+=`<div class="empty-state">Selecciona una unidad arriba para ver su historial</div>`;
-    } else {
-      const al=getAlerts(bus);
-      if(al.length) h+=`<div class="alert-bar">⚠ ${al.join(' &nbsp;·&nbsp; ')}</div>`;
-      const uid_=encodeURIComponent(bus.id);
-      h+=`<div class="tab-row">
-        <button class="tab${ST.tab==='status'?' active':''}" onclick="navigate('/unidad/${uid_}')">Status</button>
-        <button class="tab${ST.tab==='service'?' active':''}" onclick="ST.selService=null;navigate('/unidad/${uid_}/servicio')">Servicio</button>
-        <button class="tab${ST.tab==='tires'?' active':''}" onclick="navigate('/unidad/${uid_}/llantas')">Llantas</button>
-        <button class="tab${ST.tab==='repairs'?' active':''}" onclick="navigate('/unidad/${uid_}/reparaciones')">Reparaciones</button>
-        <button class="tab${ST.tab==='checklist'?' active':''}" onclick="ST.clView='history';navigate('/unidad/${uid_}/checklist')">Checklist</button>
-        <button class="tab${ST.tab==='chequeo'?' active':''}" onclick="ST.chqTimelineSel=null;navigate('/unidad/${uid_}/chequeo')">Chequeos</button>
-        <button class="tab${ST.tab==='log'?' active':''}" onclick="navigate('/unidad/${uid_}/historial')">Historial</button>
-      </div>`;
-      if(ST.tab==='status')    h+=renderStatus(bus);
-      if(ST.tab==='service')   h+=renderService(bus);
-      if(ST.tab==='tires')     h+=renderTires(bus);
-      if(ST.tab==='repairs')   h+=renderRepairs(bus);
-      if(ST.tab==='checklist') h+=renderChecklist(bus);
-      if(ST.tab==='chequeo')   h+=renderChqTab(bus);
-      if(ST.tab==='log')       h+=renderLog(bus);
-    }
   }
 
-  if(ST.modal==='log'  && bus) h+=renderLogModal(bus);
-  if(ST.modal==='tire' && bus) h+=renderTireModal(bus);
-  if(ST.modal==='bus')         h+=renderBusModal();
-  if(ST.modal==='chqQr')       h+=renderChqQrModal();
+  if(ST.modal==='bus')   h+=renderBusModal();
+  if(ST.modal==='chqQr') h+=renderChqQrModal();
   return h;
+}
+
+// ─── PANTALLAS DE UNIDAD (header pegajoso) ───────────────────────────────────
+function unitMeta(bus){
+  const t=bus.type==='txl'?'TXL':bus.type==='urvan'?'Urvan':'';
+  return `${bus.client} · ${CITIES[bus.city]?.name||bus.city}${t?' · '+t:''}`;
+}
+// Header pegajoso: siempre número de unidad, cliente y ciudad visibles.
+function uheadUnit(bus,opts){
+  opts=opts||{};
+  const uid_=encodeURIComponent(bus.id);
+  const back = opts.backTo!==undefined ? opts.backTo : '/';
+  const left = opts.title
+    ? `<div style="flex:1;min-width:0"><div class="uttl">${opts.title}</div>
+         <div class="umeta"><b class="num" style="color:var(--accent)">${bus.name}</b> · ${unitMeta(bus)}</div></div>`
+    : `<div style="flex:1;min-width:0"><div class="ubig">${bus.name}</div>
+         <div class="umeta">${unitMeta(bus)}</div></div>`;
+  const odo = opts.odo===false ? '' : `<div class="uodo"><b>${bus.km?fmt(bus.km):'—'}</b><span>km</span></div>`;
+  let h=`<div class="uhead"><div class="uhead-top">
+    <button class="uback" onclick="navigate('${back}')" aria-label="Atrás">‹</button>
+    ${left}${odo}
+  </div>`;
+  if(opts.tabs){
+    const T=(slug,tab,lbl)=>`<button class="utab${ST.tab===tab?' on':''}" onclick="navigate('/unidad/${uid_}${slug?'/'+slug:''}')">${lbl}</button>`;
+    h+=`<div class="utabs">
+      ${T('','status','Status')}${T('servicio','service','Servicio')}${T('llantas','tires','Llantas')}
+      ${T('reparaciones','repairs','Reparaciones')}${T('checklist','checklist','Checklist')}
+      ${T('chequeo','chequeo','Chequeos')}${T('historial','log','Historial')}
+    </div>`;
+  }
+  h+=`</div>`;
+  return h;
+}
+
+function renderFichaScreen(bus){
+  let h=uheadUnit(bus,{tabs:true});
+  h+=`<div class="pad">`;
+  const al=getAlerts(bus);
+  if(al.length) h+=`<div class="alert-bar">⚠ ${al.join(' &nbsp;·&nbsp; ')}</div>`;
+  if(ST.tab==='status')        h+=renderStatus(bus);
+  else if(ST.tab==='service')  h+=renderService(bus);
+  else if(ST.tab==='tires')    h+=renderTires(bus);
+  else if(ST.tab==='repairs')  h+=renderRepairs(bus);
+  else if(ST.tab==='checklist')h+=renderChecklist(bus);
+  else if(ST.tab==='chequeo')  h+=renderChqTab(bus);
+  else if(ST.tab==='log')      h+=renderLog(bus);
+  h+=`</div>`;
+  if(ST.modal==='tire') h+=renderTireModal(bus);   // edición de llanta: modal por ahora
+  return h;
+}
+
+// Cada acción es su propia pantalla: header pegajoso arriba, formulario, y la
+// barra de guardar SIEMPRE pegajosa abajo (nunca al final del scroll).
+function renderActionScreen(bus){
+  const uid_=encodeURIComponent(bus.id);
+  const A=ST.action;
+  let title='', body='', save='', backTo='/unidad/'+uid_;
+  if(A==='aceite'){
+    const svcType=ACEITE_SLUGS[ST.actionParam]||'svc';
+    const labels={svc:'Aceite de motor',svc_trans:'Aceite de transmisión',svc_diff:'Aceite diferencial'};
+    const pfx={svc:'e',svc_trans:'t',svc_diff:'d'}[svcType];
+    title=labels[svcType]||'Aceite'; backTo='/unidad/'+uid_+'/servicio';
+    body=aceiteBody(bus,svcType,pfx);
+    save=`doSaveServiceLog('${bus.id}','${svcType}','${pfx}')`;
+  } else if(A==='reparacion'){
+    title='Registrar reparación'; backTo='/unidad/'+uid_+'/reparaciones';
+    body=reparacionBody(bus); save=`doSaveRepairLog('${bus.id}')`;
+  } else if(A==='registro'){
+    title='Nuevo registro'; backTo='/unidad/'+uid_+'/historial';
+    body=registroBody(bus); save=`doSaveLog('${bus.id}')`;
+  } else if(A==='checklist-nuevo'){
+    title='Nueva inspección'; backTo='/unidad/'+uid_+'/checklist';
+    body=checklistBody(bus); save=`doSaveChecklist('${bus.id}')`;
+  } else {
+    title='Próximamente';
+    body=`<div class="rcard"><p style="color:var(--text2);margin:0">Esta acción se construye en una fase posterior del rediseño.</p></div>`;
+  }
+  let h=uheadUnit(bus,{title,backTo});
+  h+=`<div class="pad" style="padding-bottom:100px">`;
+  if(ST.modalErr) h+=`<div class="modal-err">${ST.modalErr}</div>`;
+  h+=body+`</div>`;
+  if(save){
+    h+=`<div class="stickybar"><button class="btn-primary-lg" onclick="${save}" ${ST.saving?'disabled':''}>
+      ${ST.saving?'<span class="spinner"></span>Guardando…':'Guardar'}</button></div>`;
+  }
+  return h;
+}
+
+// Cuerpos de formulario — MISMOS IDs que antes para que doSave* no cambie.
+function aceiteBody(bus,svcType,pfx){
+  const svc=applicableServices(bus).find(s=>s.type===svcType)||{interval:oilInterval(bus)};
+  const al=getServiceAlertFor(bus,svcType,svc.interval);
+  let h='';
+  if(al.status==='overdue')   h+=`<div class="alert-bar red">⚠ Vencido — ${fmt(al.overdueBy)} km de retraso</div>`;
+  else if(al.status==='ok')   h+=`<div class="alert-bar green">✓ Próximo en ${fmt(al.remaining)} km · Último a ${fmt(al.lastLog.km_after||0)} km el ${al.lastLog.date}</div>`;
+  else                        h+=`<div class="alert-bar">Sin registros previos de este servicio</div>`;
+  h+=`<div class="form-row"><label>Fecha</label><input type="date" id="sv-${pfx}-date" value="${today()}"></div>
+    <div class="form-row"><label>KM actuales (odómetro)</label><input type="number" id="sv-${pfx}-km" value="${bus.km}" inputmode="numeric"></div>
+    <div class="form-row"><label>Producto / Marca</label><input type="text" id="sv-${pfx}-brand" placeholder="Ej: Mobil 1 5W-30"></div>
+    <div class="form-row"><label>Costo ($)</label><input type="number" id="sv-${pfx}-cost" value="0" min="0" inputmode="numeric"></div>`;
+  if(svcType==='svc') h+=`<div class="form-row"><label style="margin-bottom:6px">También se cambió</label>
+    <div class="cb-grid">
+      <label class="cb-item"><input type="checkbox" id="sv-e-cb-fuel"> Filtro de combustible</label>
+      <label class="cb-item"><input type="checkbox" id="sv-e-cb-air"> Filtro de aire</label>
+      <label class="cb-item"><input type="checkbox" id="sv-e-cb-sec"> Filtro secundario</label>
+      <label class="cb-item"><input type="checkbox" id="sv-e-cb-oilf"> Filtro de aceite</label>
+      <label class="cb-item"><input type="checkbox" id="sv-e-cb-spark"> Bujías</label>
+    </div></div>`;
+  return h;
+}
+function reparacionBody(bus){
+  return `<div class="form-row"><label>Fecha</label><input type="date" id="rp-date" value="${today()}"></div>
+    <div class="form-row"><label>Odómetro *</label><input type="number" id="rp-km" value="${bus.km}" min="0" inputmode="numeric"></div>
+    <div class="form-row"><label>Tipo de reparación *</label>
+      <select id="rp-type"><option value="">— Selecciona tipo —</option>
+        ${REPAIR_TYPES.map(r=>`<option value="${r.id}">${r.lbl}</option>`).join('')}</select></div>
+    <div class="form-row"><label>Descripción de reparación *</label>
+      <textarea id="rp-desc" rows="3" placeholder="Describe el trabajo realizado…"></textarea></div>
+    <div class="form-row"><label>Costo ($) *</label><input type="number" id="rp-cost" value="" min="0" placeholder="0" inputmode="numeric"></div>`;
+}
+function registroBody(bus){
+  return `<div class="form-row"><label>Tipo de servicio</label>
+      <select id="lm-type">${Object.entries(LOG_TYPES).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></div>
+    <div class="form-row"><label>Fecha</label><input type="date" id="lm-date" value="${today()}"></div>
+    <div class="form-row"><label>KM actuales (odómetro)</label><input type="number" id="lm-km" value="${bus.km}" inputmode="numeric"></div>
+    <div class="form-row"><label>Descripción del servicio</label>
+      <textarea id="lm-desc" rows="2" placeholder="Ej: Aceite 5W-30, filtro aire, filtro aceite, bujías…"></textarea></div>
+    <div class="form-row"><label>Costo ($)</label><input type="number" id="lm-cost" value="0" min="0" inputmode="numeric"></div>
+    <div class="form-row"><label>Técnico / Taller</label><input type="text" id="lm-tech" placeholder="Nombre o taller"></div>`;
+}
+function checklistBody(bus){
+  return `<div class="fg2">
+      <div class="form-row"><label>Conductor/Operador *</label><input type="text" id="cl-conductor" placeholder="Nombre del conductor"></div>
+      <div class="form-row"><label>Supervisado por *</label><input type="text" id="cl-supervisor" placeholder="Nombre del supervisor"></div>
+    </div>
+    <div class="fg3">
+      <div class="form-row"><label>Fecha *</label><input type="date" id="cl-fecha" value="${today()}"></div>
+      <div class="form-row"><label>Hora</label><input type="time" id="cl-hora"></div>
+      <div class="form-row"><label>Kilometraje *</label><input type="number" id="cl-km" value="${bus.km}" min="0" inputmode="numeric"></div>
+    </div>
+    <div class="form-row" style="max-width:260px"><label>Carga de combustible (%)</label>
+      <input type="number" id="cl-combustible" min="0" max="100" placeholder="0–100"></div>
+    <div class="cl-section"><div class="cl-sec-hdr">Documentación</div>${clBoolRow('cl-docs',CL_DOCS)}</div>
+    <div class="cl-section"><div class="cl-sec-hdr">Parte Externa</div>${clBoolRow('cl-externo',CL_EXTERNO)}</div>
+    <div class="cl-section"><div class="cl-sec-hdr">Carrocería <span style="font-size:10px;font-weight:400;text-transform:none;letter-spacing:0">B / M / NA</span></div>${clBMNRow('cl-carroceria',CL_CARROCERIA)}</div>
+    <div class="cl-section"><div class="cl-sec-hdr">Estado de Llantas <span style="font-size:10px;font-weight:400;text-transform:none;letter-spacing:0">B / M / NA</span></div>${clBMNRow('cl-llantas',CL_LLANTAS)}</div>
+    <div class="cl-section"><div class="cl-sec-hdr">Luces</div>${clBoolRow('cl-luces',CL_LUCES)}</div>
+    <div class="cl-section"><div class="cl-sec-hdr">Niveles <span style="font-size:10px;font-weight:400;text-transform:none;letter-spacing:0">B / M / NA</span></div>${clBMNRow('cl-niveles',CL_NIVELES)}</div>
+    <div class="form-row"><label>Reparaciones o acciones requeridas</label>
+      <textarea id="cl-reparaciones" rows="2" placeholder="Listar trabajos pendientes — se agregarán como acciones a resolver…"></textarea></div>
+    <div id="cl-form-err" class="modal-err" style="display:none;margin-top:8px"></div>`;
 }
 
 function renderReport(){
@@ -731,7 +863,7 @@ function renderLog(bus){
     <div class="filter-row">
       ${['all','oil','repair','km'].map(f=>`<button class="filter-btn${ST.logFilter===f?' active':''}" onclick="ST.logFilter='${f}';render()">${f==='all'?'Todos':LOG_TYPES[f]||f}</button>`).join('')}
     </div>
-    <button class="btn sm primary" onclick="ST.modal='log';render()">+ Nuevo</button>
+    <button class="btn sm primary" onclick="navigate('/unidad/${encodeURIComponent(bus.id)}/registro')">+ Nuevo</button>
   </div>`;
 
   if(!filtered.length){
@@ -764,7 +896,7 @@ function renderLog(bus){
     <div class="stat-row"><span class="stat-lbl">Ciudad</span><span>${CITIES[bus.city]?.name||bus.city}</span></div>
     <div class="stat-row"><span class="stat-lbl">Tipo</span><span>${bus.type==='bus'?'Autobús':bus.type==='txl'?'TXL':'Urvan / Sprinter'}</span></div>
     <div class="stat-row"><span class="stat-lbl">Registros</span><span>${logs.length}</span></div>
-    <div style="margin-top:0.75rem"><button class="btn sm" onclick="ST.tab='tires';render()">Ver llantas →</button></div>
+    <div style="margin-top:0.75rem"><button class="btn sm" onclick="navigate('/unidad/${encodeURIComponent(bus.id)}/llantas')">Ver llantas →</button></div>
   </div>
   ${lastOil?`<div class="card">
     <h4 style="margin-bottom:0.75rem">Último aceite</h4>
@@ -1384,102 +1516,35 @@ function renderStats(bus){
 }
 
 function renderService(bus){
+  const uid_=encodeURIComponent(bus.id);
   const svcs=applicableServices(bus);
-  const pfxMap={svc:'e',svc_trans:'t',svc_diff:'d'};
-  const svc=svcs.find(s=>s.type===ST.selService)||null;
-
-  // Selector card
-  let h=`<div class="card" style="margin-bottom:10px">
-    <div class="form-row" style="margin:0"><label>Tipo de servicio</label>
-      <select onchange="ST.selService=this.value||null;ST.modalErr='';ST.svcErrType=null;render()">
-        <option value="">— Selecciona un servicio —</option>
-        ${svcs.map(s=>`<option value="${s.type}"${ST.selService===s.type?' selected':''}>${s.label}</option>`).join('')}
-      </select>
-    </div>
-  </div>`;
-
-  if(!svc) return h;
-
-  const pfx=pfxMap[svc.type];
-  const al=getServiceAlertFor(bus,svc.type,svc.interval);
-  const logs=busLogs(bus.id).filter(l=>l.type===svc.type);
-
-  if(al.status==='overdue'){
-    h+=`<div class="alert-bar red">⚠ ${svc.label} vencido — ${fmt(al.overdueBy)} km de retraso</div>`;
-  } else if(al.status==='ok'){
-    h+=`<div class="alert-bar green">✓ Próximo en ${fmt(al.remaining)} km · Último a ${fmt(al.lastLog.km_after||0)} km el ${al.lastLog.date}</div>`;
-  } else {
-    h+=`<div class="alert-bar">Sin registros de ${svc.label.toLowerCase()}</div>`;
-  }
-
-  h+=`<div class="two-col"><div>`;
-  h+=`<div class="card">
-    <div class="section-hdr" style="margin-bottom:0.75rem"><h4>Registrar — ${svc.label}</h4></div>
-    <div class="fg2">
-      <div class="form-row"><label>Fecha</label><input type="date" id="sv-${pfx}-date" value="${today()}"></div>
-      <div class="form-row"><label>KM actuales (odómetro)</label><input type="number" id="sv-${pfx}-km" value="${bus.km}"></div>
-    </div>
-    <div class="fg2">
-      <div class="form-row"><label>Producto / Marca</label><input type="text" id="sv-${pfx}-brand" placeholder="Ej: Mobil 1 5W-30"></div>
-      <div class="form-row"><label>Costo ($)</label><input type="number" id="sv-${pfx}-cost" value="0" min="0"></div>
-    </div>
-    ${svc.type==='svc'?`<div class="form-row" style="margin-top:4px">
-      <label style="margin-bottom:6px">También se cambió</label>
-      <div class="cb-grid">
-        <label class="cb-item"><input type="checkbox" id="sv-e-cb-fuel"> Filtro de combustible</label>
-        <label class="cb-item"><input type="checkbox" id="sv-e-cb-air"> Filtro de aire</label>
-        <label class="cb-item"><input type="checkbox" id="sv-e-cb-sec"> Filtro secundario</label>
-        <label class="cb-item"><input type="checkbox" id="sv-e-cb-oilf"> Filtro de aceite</label>
-        <label class="cb-item"><input type="checkbox" id="sv-e-cb-spark"> Bujías</label>
-      </div>
-    </div>`:''}
-    ${ST.modalErr?`<div class="modal-err">${ST.modalErr}</div>`:''}
-    <div style="display:flex;justify-content:flex-end;margin-top:0.75rem">
-      <button class="btn primary" onclick="doSaveServiceLog('${bus.id}','${svc.type}','${pfx}')" ${ST.saving?'disabled':''}>
-        ${ST.saving?'<span class="spinner"></span>Guardando...':'+ Registrar'}
-      </button>
-    </div>
-  </div>`;
-
-  if(logs.length){
-    h+=`<div class="card">`;
-    logs.forEach(l=>{
-      h+=`<div class="log-item">
-        <div class="dot" style="background:var(--green)"></div>
-        <div>
-          <div class="li-title">${l.description||svc.label}</div>
-          <div class="li-meta">${l.date} &nbsp;·&nbsp; ${fmt(l.km_after||0)} km</div>
-        </div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
-          <span class="li-cost${l.cost?'':' zero'}">${l.cost?mxn(l.cost):'—'}</span>
-          <button class="btn sm ghost" onclick="doDelServiceLog('${l.id}')">✕</button>
-        </div>
+  const tipoSlug={svc:'motor',svc_trans:'transmision',svc_diff:'diferencial'};
+  let h='';
+  svcs.forEach(svc=>{
+    const al=getServiceAlertFor(bus,svc.type,svc.interval);
+    let badge,barPct=0,barColor='var(--ok)';
+    if(al.status==='none'){ badge=`<span class="badge b-none"><i class="bdot"></i>Sin registro</span>`; }
+    else if(al.status==='overdue'){ badge=`<span class="badge b-bad"><i class="bdot"></i>Vencido</span>`; barPct=100; barColor='var(--bad)'; }
+    else { const pct=Math.round(al.km/svc.interval*100); barPct=Math.min(100,pct);
+      if(al.remaining<=1000){ badge=`<span class="badge b-warn"><i class="bdot"></i>Por vencer</span>`; barColor='var(--warn)'; }
+      else { badge=`<span class="badge b-ok"><i class="bdot"></i>Al día</span>`; } }
+    h+=`<div class="rcard">
+      <div class="cardhead" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div class="ctitle" style="font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;color:var(--text2)">${svc.label}</div>${badge}</div>`;
+    if(al.status==='none'){
+      h+=`<div class="empty" style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <p style="margin:0;color:var(--text2);font-size:13px">Sin ciclo activo. Registra el último cambio.</p>
+        <button class="mini" style="border:1px solid var(--accent);color:var(--accent);background:none;border-radius:8px;padding:8px 12px;font-weight:600;cursor:pointer;white-space:nowrap;min-height:40px" onclick="navigate('/unidad/${uid_}/aceite/${tipoSlug[svc.type]}')">Registrar</button>
       </div>`;
-    });
+    } else {
+      const rem=al.status==='overdue'?('−'+fmt(al.overdueBy)):fmt(al.remaining);
+      h+=`<div class="big" style="font-family:'Roboto Mono',monospace;font-size:22px;font-weight:600">${rem} <span style="font-size:12px;color:var(--text2);font-family:Inter">km ${al.status==='overdue'?'de retraso':'restantes'}</span></div>
+        <div class="sub" style="font-size:12.5px;color:var(--text2);margin-top:3px">Último: ${al.lastLog.date} · ${fmt(al.lastLog.km_after||0)} km · intervalo ${fmt(svc.interval)} km</div>
+        <div class="bar" style="height:5px;background:var(--surface-2);border-radius:99px;overflow:hidden;margin-top:11px"><i style="display:block;height:100%;border-radius:99px;width:${barPct}%;background:${barColor}"></i></div>
+        <button class="btn-ghost-lg" style="margin-top:12px" onclick="navigate('/unidad/${uid_}/aceite/${tipoSlug[svc.type]}')">Registrar cambio</button>`;
+    }
     h+=`</div>`;
-  } else {
-    h+=`<div class="empty-state">Sin registros de ${svc.label.toLowerCase()}</div>`;
-  }
-
-  h+=`</div><div><div class="card">
-    <h4 style="margin-bottom:0.75rem">Estado de servicio</h4>
-    <div class="stat-row"><span class="stat-lbl">Odómetro actual</span><span>${fmt(bus.km)} km</span></div>
-    ${al.lastLog?`
-    <div class="stat-row"><span class="stat-lbl">Último cambio</span><span>${al.lastLog.date}</span></div>
-    <div class="stat-row"><span class="stat-lbl">KM en cambio</span><span>${fmt(al.lastLog.km_after||0)} km</span></div>
-    <div class="stat-row"><span class="stat-lbl">KM desde cambio</span>
-      <span style="font-weight:600;color:${al.status==='overdue'?'var(--red-dark)':'var(--green-dark)'}">${fmt(al.km)} km</span></div>
-    `:''}
-    <div class="stat-row"><span class="stat-lbl">Intervalo</span><span>${fmt(svc.interval)} km</span></div>
-    ${svc.type==='svc'?`<div style="margin-top:0.75rem;padding-top:0.75rem;border-top:0.5px solid var(--border)">
-      <label>Cambiar intervalo (km)</label>
-      <div style="display:flex;gap:8px;margin-top:4px">
-        <input type="number" id="sv-interval" value="${svc.interval}" min="1000" step="500" style="flex:1">
-        <button class="btn" onclick="doSaveOilInterval('${bus.id}')">Guardar</button>
-      </div>
-    </div>`:''}
-  </div></div></div>`;
-
+  });
   return h;
 }
 
@@ -1487,33 +1552,10 @@ function renderRepairs(bus){
   const repairLogs=busLogs(bus.id).filter(l=>l.type==='repair');
   const total=repairLogs.reduce((s,l)=>s+(l.cost||0),0);
 
+  const uid_=encodeURIComponent(bus.id);
   let h=`<div class="two-col"><div>`;
 
-  h+=`<div class="card">
-    <div class="section-hdr" style="margin-bottom:0.75rem"><h4>Registrar reparación</h4></div>
-    <div class="fg2">
-      <div class="form-row"><label>Fecha</label><input type="date" id="rp-date" value="${today()}"></div>
-      <div class="form-row"><label>Odómetro *</label><input type="number" id="rp-km" value="${bus.km}" min="0"></div>
-    </div>
-    <div class="form-row"><label>Tipo de reparación *</label>
-      <select id="rp-type">
-        <option value="">— Selecciona tipo —</option>
-        ${REPAIR_TYPES.map(r=>`<option value="${r.id}">${r.lbl}</option>`).join('')}
-      </select>
-    </div>
-    <div class="form-row"><label>Descripción de reparación *</label>
-      <textarea id="rp-desc" rows="3" placeholder="Describe el trabajo realizado…"></textarea>
-    </div>
-    <div class="form-row"><label>Costo ($) *</label>
-      <input type="number" id="rp-cost" value="" min="0" placeholder="0">
-    </div>
-    ${ST.modalErr?`<div class="modal-err">${ST.modalErr}</div>`:''}
-    <div style="display:flex;justify-content:flex-end;margin-top:0.75rem">
-      <button class="btn primary" onclick="doSaveRepairLog('${bus.id}')" ${ST.saving?'disabled':''}>
-        ${ST.saving?'<span class="spinner"></span>Guardando...':'+ Registrar'}
-      </button>
-    </div>
-  </div>`;
+  h+=`<button class="btn-primary-lg" style="margin-bottom:12px" onclick="navigate('/unidad/${uid_}/reparacion')">+ Nueva reparación</button>`;
 
   if(repairLogs.length){
     h+=`<div class="card">`;
@@ -1548,8 +1590,8 @@ function renderRepairs(bus){
 
 function renderChecklist(bus){
   const clLogs=busLogs(bus.id).filter(l=>l.type==='checklist');
+  const uid_=encodeURIComponent(bus.id);
   const openIssues=(bus.open_issues||[]).filter(i=>!i.resolved);
-  if(ST.clView==='form') return renderChecklistForm(bus);
   let h='';
   if(openIssues.length){
     h+=`<div class="card" style="border-color:rgba(226,75,74,0.45);margin-bottom:10px">
@@ -1565,7 +1607,7 @@ function renderChecklist(bus){
   }
   h+=`<div class="card"><div class="section-hdr" style="margin-bottom:0.75rem">
     <h4>Historial de inspecciones</h4>
-    <button class="btn sm primary" onclick="ST.clView='form';ST.modalErr='';render()">+ Nueva inspección</button>
+    <button class="btn sm primary" onclick="navigate('/unidad/${uid_}/checklist-nuevo')">+ Nueva inspección</button>
   </div>`;
   if(!clLogs.length){
     h+=`<div class="empty-state">Sin inspecciones registradas</div>`;
@@ -1765,7 +1807,9 @@ async function doSaveLog(busId){
     bus.km=prevKm; ST.logs=ST.logs.filter(l=>l.id!==log.id);
     ST.saving=false; ST.modalErr='Error al guardar. Intenta de nuevo.'; render(); return;
   }
-  ST.saving=false; ST.modal=null; ST.modalErr=''; render();
+  ST.saving=false; ST.modal=null; ST.modalErr='';
+  navigate('/unidad/'+encodeURIComponent(busId)+'/historial');
+  showToast('Registro guardado');
 }
 
 async function doSaveTire(busId){
@@ -1913,7 +1957,9 @@ async function doSaveServiceLog(busId, svcType, pfx){
     bus.km=prevKm; ST.logs=ST.logs.filter(l=>l.id!==log.id);
     ST.saving=false; ST.modalErr='Error al guardar. Intenta de nuevo.'; ST.svcErrType=svcType; render(); return;
   }
-  ST.saving=false; ST.modalErr=''; showToast(`${svcLabels[svcType]||'Servicio'} registrado`);
+  ST.saving=false; ST.modalErr='';
+  navigate('/unidad/'+encodeURIComponent(busId)+'/servicio');
+  showToast(`${svcLabels[svcType]||'Servicio'} registrado`);
 }
 
 async function doDelServiceLog(id){
@@ -1966,7 +2012,9 @@ async function doSaveRepairLog(busId){
     bus.km=prevKm; ST.logs=ST.logs.filter(l=>l.id!==log.id);
     ST.saving=false; ST.modalErr='Error al guardar. Intenta de nuevo.'; render(); return;
   }
-  ST.saving=false; ST.modalErr=''; showToast('Reparación registrada');
+  ST.saving=false; ST.modalErr='';
+  navigate('/unidad/'+encodeURIComponent(busId)+'/reparaciones');
+  showToast('Reparación registrada');
 }
 
 async function doDelRepairLog(id){
@@ -2031,6 +2079,7 @@ async function doSaveChecklist(busId){
     showClErr('Error al guardar. Intenta de nuevo.'); return;
   }
   ST.saving=false; ST.clView='history';
+  navigate('/unidad/'+encodeURIComponent(busId)+'/checklist');
   showToast(`Inspección ${data.passed?'aprobada ✓':'con observaciones'} guardada`);
 }
 
@@ -2092,7 +2141,7 @@ const HUB_SLUG_BY_VIEW = Object.fromEntries(Object.entries(HUB_SLUGS).map(([slug
 const ACEITE_SLUGS = { motor:'svc', transmision:'svc_trans', diferencial:'svc_diff' };
 const ACEITE_SLUG_BY_TYPE = { svc:'motor', svc_trans:'transmision', svc_diff:'diferencial' };
 // Acciones que son pantalla propia (header pegajoso + barra de guardar inferior).
-const ACTION_SLUGS = new Set(['chequeo-nuevo','aceite','llantas','reparacion','golpes','registro']);
+const ACTION_SLUGS = new Set(['aceite','reparacion','registro','checklist-nuevo','golpes','chequeo-nuevo']);
 
 function parsePath(pathname){
   const seg = decodeURIComponent(pathname).replace(/^\/+|\/+$/g,'').split('/').filter(Boolean);
