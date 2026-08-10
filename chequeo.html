@@ -5,7 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Chequeo Rápido — Grupo ATE</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="shared.css">
+<link rel="stylesheet" href="/shared.css">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#141618">
+<link rel="apple-touch-icon" href="/icon.svg">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <style>
 .chq-search{font-size:16px;padding:12px 14px;margin-bottom:12px}
 .chq-hdr{display:flex;align-items:center;gap:10px;padding:1rem 0 0.75rem;margin-bottom:1rem;border-bottom:0.5px solid var(--border)}
@@ -13,6 +17,8 @@
 .odo-big{width:100%;font-size:30px;font-weight:600;text-align:center;letter-spacing:0.02em;padding:14px;border:1.5px solid var(--blue);border-radius:10px;font-variant-numeric:tabular-nums}
 .odo-hint{font-size:12px;color:var(--text3);margin-top:7px;text-align:center}
 .odo-req{color:var(--red);font-weight:700}
+.sync-badge{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#EF9F27;color:#241C05;padding:9px 16px;border-radius:99px;font-size:12.5px;font-weight:700;z-index:998;box-shadow:0 2px 12px rgba(0,0,0,.35);cursor:pointer;border:0}
+.chq-photo-slot.queued{border-style:solid;border-color:#EF9F27}
 </style>
 </head>
 <body>
@@ -67,6 +73,7 @@ async function init(){
         ST.role = role; ST.auth = cities; ST.authEmail = session.user?.email || null;
         const {error}=await loadData(); if(error) console.error('Error cargando datos:', error);
         consumeDeepLink();
+        flushQueue();
       }
     }
   } catch(e){ console.error('Supabase unreachable:', e); }
@@ -112,6 +119,47 @@ async function dbUpdateBusKm(busId, km){
   const {error}=await sb.from('buses').update({km}).eq('id',busId);
   return {error};
 }
+
+// ─── SINCRONIZACIÓN OFFLINE ──────────────────────────────────────────────────
+// Bases y patios tienen mala señal. Si un guardado falla por red, se encola en
+// localStorage (incluida la foto como data URL) y se reintenta al recuperar
+// conexión. La app muestra un indicador de pendientes por sincronizar.
+const SYNC_KEY='ate_chq_queue';
+function loadQueue(){ try{ return JSON.parse(localStorage.getItem(SYNC_KEY)||'[]'); }catch(e){ return []; } }
+function saveQueue(q){ try{ localStorage.setItem(SYNC_KEY, JSON.stringify(q)); }catch(e){} }
+function enqueue(op){ const q=loadQueue(); q.push(op); saveQueue(q); updateSyncBadge(); }
+function pendingCount(){ return loadQueue().length; }
+function fileToDataUrl(file){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file); }); }
+async function tryDb(fn){ try{ const r=await fn(); return r&&r.error?r.error:null; }catch(e){ return e||new Error('network'); } }
+async function runOp(op){
+  if(op.type==='photo'){ const blob=await (await fetch(op.dataUrl)).blob(); const {error}=await sb.storage.from('chequeos').upload(op.path, blob, {upsert:true}); return !error; }
+  if(op.type==='chequeo'){ const {error}=await sb.from('chequeos_rapidos').insert(op.row); return !error; }
+  if(op.type==='danos'){ const {error}=await sb.from('danos').insert(op.rows); return !error; }
+  if(op.type==='buskm'){ const {error}=await sb.from('buses').update({km:op.km}).eq('id',op.busId); return !error; }
+  return true;
+}
+let syncing=false;
+async function flushQueue(){
+  if(syncing||!sb||!navigator.onLine) return;
+  let q=loadQueue(); if(!q.length){ updateSyncBadge(); return; }
+  syncing=true;
+  while(q.length){
+    let ok=false;
+    try{ ok=await runOp(q[0]); }catch(e){ ok=false; }
+    if(!ok) break;               // sin red / error: reintentar después
+    q.shift(); saveQueue(q); updateSyncBadge();
+  }
+  syncing=false; updateSyncBadge();
+}
+function updateSyncBadge(){
+  document.querySelectorAll('.sync-badge').forEach(e=>e.remove());
+  const n=pendingCount(); if(!n) return;
+  const b=document.createElement('button'); b.className='sync-badge';
+  b.textContent=`⟳ ${n} por sincronizar`;
+  b.onclick=flushQueue;
+  document.body.appendChild(b);
+}
+window.addEventListener('online', flushQueue);
 async function dbSaveOperador(operador){
   if(!sb) return {error:'Sin conexión'};
   const {error}=await sb.from('operadores').upsert(operador);
@@ -181,6 +229,7 @@ function render(){
   document.getElementById('root').innerHTML = ST.auth ? renderApp() : renderLogin();
   document.querySelectorAll('.toast').forEach(t=>t.remove());
   if(ST.toast){ const t=document.createElement('div'); t.className='toast'+(ST.toastType==='error'?' error':''); t.textContent=ST.toast; document.body.appendChild(t); }
+  updateSyncBadge();
 }
 function showToast(msg,type='success'){ ST.toast=msg; ST.toastType=type; render(); setTimeout(()=>{ ST.toast=null; ST.toastType=null; document.querySelectorAll('.toast').forEach(e=>e.remove()); },2500); }
 
@@ -217,6 +266,7 @@ async function doLogin(){
   if(loadErr){ ST.loginErr='Error al cargar datos. Intenta de nuevo.'; ST.auth=null; ST.role=null; ST.saving=false; render(); return; }
   consumeDeepLink();
   render();
+  flushQueue();
 }
 async function doLogout(){
   await sb.auth.signOut();
@@ -404,10 +454,10 @@ function renderChqPhotoSlots(){
   return `<div class="chq-photo-grid">${CHQ_SLOTS.map(slot=>{
     const status=ST.chqUploadProgress[slot];
     const preview=ST.chqPhotoPreviews[slot];
-    return `<div class="chq-photo-slot${status==='done'?' done':''}">
+    return `<div class="chq-photo-slot${status==='done'?' done':status==='queued'?' queued':''}">
       <input type="file" accept="image/*" capture="environment" onchange="chqPhotoSelected('${slot}',this.files[0])">
       ${preview?`<img src="${preview}">`:`<div style="height:80px;display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:22px;margin-bottom:4px">+</div>`}
-      <div class="cps-lbl">${CHQ_SLOT_LABELS[slot]}${status==='uploading'?' · subiendo…':status==='done'?' ✓':status==='error'?' · error':''}</div>
+      <div class="cps-lbl">${CHQ_SLOT_LABELS[slot]}${status==='uploading'?' · subiendo…':status==='done'?' ✓':status==='queued'?' · pendiente ⟳':status==='error'?' · error':''}</div>
     </div>`;
   }).join('')}</div>`;
 }
@@ -418,7 +468,16 @@ async function chqPhotoSelected(slot, file){
   ST.chqPhotos[slot]=null;
   render();
   const {path,error}=await dbUploadChequeoPhoto(ST.chqId, slot, file);
-  if(error){ ST.chqUploadProgress[slot]='error'; showToast('Error al subir la foto. Intenta de nuevo.','error'); render(); return; }
+  if(error){
+    // Sin red: guarda la foto localmente (data URL) y encola la subida.
+    try{
+      const dataUrl=await fileToDataUrl(file);
+      const p=`${ST.chqId}/${slot}.jpg`;
+      enqueue({type:'photo', path:p, dataUrl});
+      ST.chqPhotos[slot]=p; ST.chqUploadProgress[slot]='queued'; render();
+    }catch(e){ ST.chqUploadProgress[slot]='error'; showToast('No se pudo procesar la foto. Intenta de nuevo.','error'); render(); }
+    return;
+  }
   ST.chqPhotos[slot]=path;
   ST.chqUploadProgress[slot]='done';
   render();
@@ -562,21 +621,16 @@ async function doSaveChequeo(){
   };
   ST.chequeos.unshift(chq);
   ST.saving=true; render();
-  const {error}=await dbSaveChequeo(chq);
-  if(error){
-    ST.chequeos=ST.chequeos.filter(c=>c.id!==chq.id);
-    ST.saving=false; ST.chqErr='Error al guardar. Intenta de nuevo.'; render(); return;
-  }
-  // Actualiza el odómetro de la unidad — los ciclos (aceite/llanta) se recalculan
-  // solos porque se derivan en vivo de bus.km en index.html.
+  // Guardado optimista con cola offline: si falla la red, se encola y se
+  // reintenta al recuperar conexión; nunca se pierde el chequeo capturado.
+  let queued=false;
+  const eChq=await tryDb(()=>dbSaveChequeo(chq));
+  if(eChq){ enqueue({type:'chequeo', row:chq}); queued=true; }
   if(km>(bus.km||0)){
-    const prevBusKm=bus.km;
-    bus.km=km;
-    const {error:eKm}=await dbUpdateBusKm(bus.id, km);
-    if(eKm){ bus.km=prevBusKm; showToast('Chequeo guardado, pero no se pudo actualizar el odómetro de la unidad.','error'); }
+    bus.km=km;   // optimista; se sincroniza con la cola si falló
+    const eKm=await tryDb(()=>dbUpdateBusKm(bus.id, km));
+    if(eKm){ enqueue({type:'buskm', busId:bus.id, km}); queued=true; }
   }
-  // Golpes nuevos -> filas en el expediente `danos`, con la ventana de tiempo y
-  // el operador a cargo (para rastrear "apareció entre base X y base Y").
   if(marcasNuevas.length){
     const danoRows=marcasNuevas.map(p=>({
       id:uid(), bus_id:ST.chqBusId, x:p.x, y:p.y, descripcion:p.descripcion, severidad:p.severidad,
@@ -584,14 +638,15 @@ async function doSaveChequeo(){
       operador_texto:operadorTexto, base_id:ST.chqBase, detectado_ts:chq.ts,
       prev_base_id:prev?.base_id||null, prev_ts:prev?.ts||null, fecha_deteccion:today()
     }));
-    const {error:eD}=await dbInsertDanos(danoRows);
-    if(eD) showToast('Chequeo guardado, pero no se registraron los golpes nuevos.','error');
-    else ST.danos.push(...danoRows);
+    ST.danos.push(...danoRows);
+    const eD=await tryDb(()=>dbInsertDanos(danoRows));
+    if(eD){ enqueue({type:'danos', rows:danoRows}); queued=true; }
   }
   ST.saving=false;
-  ST.chqLastResult={busName:bus.name, danoNuevo, severidadMaxima};
+  ST.chqLastResult={busName:bus.name, danoNuevo, severidadMaxima, queued};
   ST.view='success';
   render();
+  flushQueue();
 }
 
 function renderSuccess(){
@@ -600,7 +655,8 @@ function renderSuccess(){
   return `<div class="chq-success">
     <div class="ico">${ok?'✓':'⚠'}</div>
     <h3 style="margin-bottom:0.5rem">Chequeo guardado</h3>
-    <p style="color:var(--text2);font-size:13px;margin-bottom:1.5rem">${escHtml(r.busName)}${ok?' — sin daño nuevo detectado':` — daño nuevo detectado (${r.severidadMaxima==='seguridad'?'seguridad':'cosmético'})`}</p>
+    <p style="color:var(--text2);font-size:13px;margin-bottom:${r.queued?'0.75rem':'1.5rem'}">${escHtml(r.busName)}${ok?' — sin daño nuevo detectado':` — daño nuevo detectado (${r.severidadMaxima==='seguridad'?'seguridad':'cosmético'})`}</p>
+    ${r.queued?`<p style="color:#EF9F27;font-size:12.5px;font-weight:600;margin-bottom:1.5rem">⟳ Guardado en el dispositivo — se sincronizará al recuperar señal.</p>`:''}
     <button class="btn primary" onclick="ST.view='picker';ST.pickerQuery='';render()">Elegir otra unidad</button>
   </div>`;
 }
@@ -608,6 +664,7 @@ function renderSuccess(){
 // misma tecla Enter que el resto de la flota: envía el login con la contraseña
 document.addEventListener('keydown', e=>{ if(e.key==='Enter'&&!ST.auth){ doLogin(); } });
 
+if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{})); }
 init();
 </script>
 </body>

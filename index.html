@@ -10,6 +10,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#141618">
+<link rel="apple-touch-icon" href="/icon.svg">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <style>
 .fleet-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-bottom:1.25rem}
 .bus-chip{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:10px 14px;cursor:pointer;transition:border-color 0.12s}
@@ -680,7 +685,7 @@ function renderHubShell(){
   h+=`<div style="padding:0 14px">`;
   if(ST.view==='report')        h+=renderReport();
   else if(ST.view==='chequeos') h+=renderChqHub();
-  else if(ST.view==='compras')  h+=renderComprasHub();
+  else if(ST.view==='compras')  h+=(ST.role==='admin'?renderComprasHub():`<div class="empty-state">El taller (órdenes de compra) es solo para administradores.</div>`);
   else                          h+=renderFleetHome();
   h+=`</div>`;
 
@@ -772,7 +777,8 @@ function renderCreateMenu(){
   return `<div class="menu-overlay" onclick="if(event.target===this){ST.modal=null;render()}"><div class="menu-sheet">
     <div class="grouphead" style="padding:0 2px 8px">Crear</div>
     ${isAdmin?`<button class="menu-item" onclick="ST.modal='bus';render()">＋  Nueva unidad</button>`:''}
-    <a class="menu-item" href="/orden-compra.html" target="_blank" rel="noopener">＋  Orden de compra ↗</a>
+    ${isAdmin?`<a class="menu-item" href="/orden-compra.html" target="_blank" rel="noopener">＋  Orden de compra ↗</a>`:''}
+    ${!isAdmin?`<div style="padding:8px 4px 4px;font-size:12.5px;color:var(--text3)">Como operador no tienes acciones de creación disponibles.</div>`:''}
     <button class="menu-item" style="color:var(--text2)" onclick="ST.modal=null;render()">Cancelar</button>
   </div></div>`;
 }
@@ -2637,6 +2643,7 @@ async function boot(){
   render();
 }
 boot();
+if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{})); }
 </script>
 </body>
 </html>

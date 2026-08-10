@@ -1,0 +1,14 @@
+{
+  "name": "ATE Flota — Control de Flota",
+  "short_name": "ATE Flota",
+  "description": "Gestión de flota de Grupo ATE",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#141618",
+  "theme_color": "#141618",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
