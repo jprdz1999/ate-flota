@@ -266,6 +266,14 @@ const POS_CFG = [
 ];
 const URVAN_POS = new Set(['FL','FR','RLO','RRO','SP']);
 const TXL_POS   = new Set(['FL','FR','RLL','RLR','RRL','RRR']);
+// Autobús: 2 delanteras + 4 traseras (doble rodada) + refacción. NO incluye el
+// esquema RLL/RLR/RRL/RRR (ese es de TXL) — mezclarlos superpone posiciones en
+// las mismas coordenadas y las traseras se ocultan entre sí en el diagrama.
+const BUS_POS   = new Set(['FL','FR','RLI','RLO','RRI','RRO','SP']);
+function tirePositions(bus){
+  const set = bus.type==='txl' ? TXL_POS : bus.type==='urvan' ? URVAN_POS : BUS_POS;
+  return POS_CFG.filter(p=>set.has(p.id));
+}
 const POS_NAMES = {
   FL:'Delantera izquierda',FR:'Delantera derecha',
   RLI:'Trasera izq. interior',RLO:'Trasera izq. exterior',
@@ -925,7 +933,7 @@ function renderMantenimiento(bus){
 function renderTiresBlock(bus){
   const uid_=encodeURIComponent(bus.id);
   const tires=bus.tires||{};
-  const positions=bus.type==='bus'?POS_CFG:bus.type==='txl'?POS_CFG.filter(p=>TXL_POS.has(p.id)):POS_CFG.filter(p=>URVAN_POS.has(p.id));
+  const positions=tirePositions(bus);
   // Lista (móvil): posición · km · pill de estado. "Sin registro" es botón.
   let h=`<div class="only-mobile rcard" style="padding:4px 14px">`;
   positions.forEach(p=>{
@@ -1103,7 +1111,8 @@ function aceiteBody(bus,svcType,pfx){
   else if(al.status==='ok')   h+=`<div class="alert-bar green">✓ Próximo en ${fmt(al.remaining)} km · Último a ${fmt(al.lastLog.km_after||0)} km el ${al.lastLog.date}</div>`;
   else                        h+=`<div class="alert-bar">Sin registros previos de este servicio</div>`;
   h+=`<div class="form-row"><label>Fecha</label><input type="date" id="sv-${pfx}-date" value="${today()}"></div>
-    <div class="form-row"><label>KM actuales (odómetro)</label><input type="number" id="sv-${pfx}-km" value="${bus.km}" inputmode="numeric"></div>
+    <div class="form-row"><label>Kilometraje al hacer el cambio</label><input type="number" id="sv-${pfx}-km" value="${bus.km}" inputmode="numeric">
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">Odómetro cuando se hizo. Si fue en el pasado, captura el km de ese momento — el próximo cambio se calcula desde ahí.</div></div>
     <div class="form-row"><label>Producto / Marca</label><input type="text" id="sv-${pfx}-brand" placeholder="Ej: Mobil 1 5W-30"></div>
     <div class="form-row"><label>Costo ($)</label><input type="number" id="sv-${pfx}-cost" value="0" min="0" inputmode="numeric"></div>`;
   if(svcType==='svc') h+=`<div class="form-row"><label style="margin-bottom:6px">También se cambió</label>
@@ -1118,7 +1127,8 @@ function aceiteBody(bus,svcType,pfx){
 }
 function reparacionBody(bus){
   return `<div class="form-row"><label>Fecha</label><input type="date" id="rp-date" value="${today()}"></div>
-    <div class="form-row"><label>Odómetro *</label><input type="number" id="rp-km" value="${bus.km}" min="0" inputmode="numeric"></div>
+    <div class="form-row"><label>Kilometraje de la reparación *</label><input type="number" id="rp-km" value="${bus.km}" min="0" inputmode="numeric">
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">Odómetro cuando se hizo (puede ser una fecha/km pasado).</div></div>
     <div class="form-row"><label>Tipo de reparación *</label>
       <select id="rp-type"><option value="">— Selecciona tipo —</option>
         ${REPAIR_TYPES.map(r=>`<option value="${r.id}">${r.lbl}</option>`).join('')}</select></div>
@@ -1130,7 +1140,7 @@ function registroBody(bus){
   return `<div class="form-row"><label>Tipo de servicio</label>
       <select id="lm-type">${Object.entries(LOG_TYPES).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></div>
     <div class="form-row"><label>Fecha</label><input type="date" id="lm-date" value="${today()}"></div>
-    <div class="form-row"><label>KM actuales (odómetro)</label><input type="number" id="lm-km" value="${bus.km}" inputmode="numeric"></div>
+    <div class="form-row"><label>Kilometraje del evento</label><input type="number" id="lm-km" value="${bus.km}" inputmode="numeric"></div>
     <div class="form-row"><label>Descripción del servicio</label>
       <textarea id="lm-desc" rows="2" placeholder="Ej: Aceite 5W-30, filtro aire, filtro aceite, bujías…"></textarea></div>
     <div class="form-row"><label>Costo ($)</label><input type="number" id="lm-cost" value="0" min="0" inputmode="numeric"></div>
@@ -1315,7 +1325,7 @@ function renderLog(bus){
 
 function renderTireSVG(bus, interactive){
   const tires=bus.tires||{};
-  const positions=bus.type==='bus'?POS_CFG:bus.type==='txl'?POS_CFG.filter(p=>TXL_POS.has(p.id)):POS_CFG.filter(p=>URVAN_POS.has(p.id));
+  const positions=tirePositions(bus);
   const sel=interactive?ST.selTire:null;
   let h=`<div class="tire-wrap"><svg viewBox="0 0 240 305" style="width:100%;display:block">
     <rect x="33" y="25" width="174" height="232" rx="10" fill="var(--bg2)" stroke="var(--border)" stroke-width="0.5"/>
@@ -1824,7 +1834,7 @@ function renderStatus(bus){
 
 function renderTires(bus){
   const tires=bus.tires||{};
-  const positions=bus.type==='bus'?POS_CFG:bus.type==='txl'?POS_CFG.filter(p=>TXL_POS.has(p.id)):POS_CFG.filter(p=>URVAN_POS.has(p.id));
+  const positions=tirePositions(bus);
   const sel=ST.selTire, tire=sel?tires[sel]:null;
 
   let h=`<div class="two-col"><div class="card"><div class="section-hdr">
@@ -2108,7 +2118,7 @@ function renderLogModal(bus){
 }
 
 function renderTireModal(bus){
-  const positions=bus.type==='bus'?POS_CFG:POS_CFG.filter(p=>URVAN_POS.has(p.id));
+  const positions=tirePositions(bus);
   const prePos=ST.tirePrePos||positions[0]?.id;
   return `<div class="modal-wrap"><div class="modal">
     <h3>Evento de llanta — ${bus.name}</h3>
@@ -2126,7 +2136,7 @@ function renderTireModal(bus){
     </div>
     <div class="fg2">
       <div class="form-row"><label>Fecha</label><input type="date" id="tm-date" value="${today()}"></div>
-      <div class="form-row"><label>KM actuales</label><input type="number" id="tm-km" value="${bus.km}"></div>
+      <div class="form-row"><label>Kilometraje del evento</label><input type="number" id="tm-km" value="${bus.km}"></div>
     </div>
     <div class="fg2">
       <div class="form-row"><label>Marca / Medida</label><input type="text" id="tm-brand" placeholder="Ej: Hankook 11R22.5"></div>
@@ -2197,16 +2207,14 @@ async function doSaveLog(busId){
   const desc=document.getElementById('lm-desc').value.trim();
   const cost=parseFloat(costVal)||0;
   const tech=document.getElementById('lm-tech').value.trim();
-  const kmAfter=Math.max(kmRaw,bus.km);
-  const prevKm=bus.km;
-  bus.km=kmAfter;
-  const log={id:uid(),bus_id:busId,city:bus.city,type,date,description:desc,cost,technician:tech,km_after:kmAfter,ts:Date.now()};
+  // km_after = odómetro al momento del evento (histórico). NO modifica el
+  // odómetro actual de la unidad (eso lo hacen los chequeos/checklist).
+  const log={id:uid(),bus_id:busId,city:bus.city,type,date,description:desc,cost,technician:tech,km_after:kmRaw,ts:Date.now()};
   ST.logs.unshift(log);
   ST.saving=true; ST.modalErr=''; render();
-  const {error:e1}=await dbSaveBus(bus);
   const {error:e2}=await dbSaveLog(log);
-  if(e1||e2){
-    bus.km=prevKm; ST.logs=ST.logs.filter(l=>l.id!==log.id);
+  if(e2){
+    ST.logs=ST.logs.filter(l=>l.id!==log.id);
     ST.saving=false; ST.modalErr='Error al guardar. Intenta de nuevo.'; render(); return;
   }
   ST.saving=false; ST.modal=null; ST.modalErr='';
@@ -2231,7 +2239,7 @@ async function doSaveTire(busId){
   const cond=document.getElementById('tm-cond').value;
   const cost=parseFloat(costVal)||0;
   const notes=document.getElementById('tm-notes').value.trim();
-  const kmAfter=Math.max(kmRaw,bus.km);
+  const kmAfter=kmRaw;  // km del evento (histórico); no cambia el odómetro actual
   // snapshot for rollback
   const prevKm=bus.km;
   const prevTires=JSON.parse(JSON.stringify(bus.tires||{}));
@@ -2248,7 +2256,6 @@ async function doSaveTire(busId){
       const swapEntry={date,event:TIRE_EVENTS['rotate'],brand:dstTire.brand||'',kmAt:kmAfter,notes};
       bus.tires[pos]={...dstTire,installDate:date,kmAt:kmAfter,history:[swapEntry,...(dstTire.history||[])]};
     } else { delete bus.tires[pos]; }
-    bus.km=kmAfter;
     const arrow=dstTire?'↔':'→';
     const desc=`Rotación: ${POS_NAMES[pos]} ${arrow} ${POS_NAMES[dest]}${srcTire.brand?' · '+srcTire.brand:''}`;
     const log={id:uid(),bus_id:busId,city:bus.city,type:'tire',date,description:desc,cost,km_after:kmAfter,ts:Date.now()};
@@ -2270,7 +2277,6 @@ async function doSaveTire(busId){
   } else {
     bus.tires[pos]={brand:brand||(prev?.brand||''),installDate:date,kmAt:kmAfter,cond,history:[histEntry,...(prev?.history||[])]};
   }
-  bus.km=kmAfter;
   const logEntry={id:uid(),bus_id:busId,city:bus.city,type:'tire',date,description:`${TIRE_EVENTS[event]} · ${POS_NAMES[pos]}${brand?' · '+brand:''}`,cost,km_after:kmAfter,ts:Date.now()};
   ST.logs.unshift(logEntry);
   ST.saving=true; ST.modalErr=''; render();
@@ -2348,17 +2354,15 @@ async function doSaveServiceLog(busId, svcType, pfx){
     ].filter(([id])=>document.getElementById(id)?.checked).map(([,lbl])=>lbl);
     if(extras.length) parts.push(extras.join(', '));
   }
-  const kmAfter=Math.max(kmRaw,bus.km);
-  const prevKm=bus.km;
-  bus.km=kmAfter;
+  // km_after = odómetro al momento del cambio (histórico). No toca el odómetro actual.
+  const kmAfter=kmRaw;
   const desc=parts.join(' · ');
   const log={id:uid(),bus_id:busId,city:bus.city,type:svcType,date,description:desc,cost,km_after:kmAfter,ts:Date.now()};
   ST.logs.unshift(log);
   ST.saving=true; ST.modalErr=''; ST.svcErrType=null; render();
-  const {error:e1}=await dbSaveBus(bus);
   const {error:e2}=await dbSaveLog(log);
-  if(e1||e2){
-    bus.km=prevKm; ST.logs=ST.logs.filter(l=>l.id!==log.id);
+  if(e2){
+    ST.logs=ST.logs.filter(l=>l.id!==log.id);
     ST.saving=false; ST.modalErr='Error al guardar. Intenta de nuevo.'; ST.svcErrType=svcType; render(); return;
   }
   ST.saving=false; ST.modalErr='';
@@ -2402,18 +2406,16 @@ async function doSaveRepairLog(busId){
   if(!repType){ ST.modalErr='Selecciona el tipo de reparación.'; render(); return; }
   if(!desc){ ST.modalErr='La descripción es obligatoria.'; render(); return; }
   if(costRaw===''||isNaN(cost)||cost<0){ ST.modalErr='El costo es obligatorio.'; render(); return; }
-  const kmAfter=Math.max(kmRaw,bus.km);
-  const prevKm=bus.km;
-  bus.km=kmAfter;
+  // km_after = odómetro al momento de la reparación (histórico). No toca el odómetro actual.
+  const kmAfter=kmRaw;
   const typeLbl=REPAIR_TYPES.find(r=>r.id===repType)?.lbl||repType;
   const fullDesc=`${typeLbl} · ${desc}`;
   const log={id:uid(),bus_id:busId,city:bus.city,type:'repair',date,description:fullDesc,cost,km_after:kmAfter,ts:Date.now()};
   ST.logs.unshift(log);
   ST.saving=true; ST.modalErr=''; render();
-  const {error:e1}=await dbSaveBus(bus);
   const {error:e2}=await dbSaveLog(log);
-  if(e1||e2){
-    bus.km=prevKm; ST.logs=ST.logs.filter(l=>l.id!==log.id);
+  if(e2){
+    ST.logs=ST.logs.filter(l=>l.id!==log.id);
     ST.saving=false; ST.modalErr='Error al guardar. Intenta de nuevo.'; render(); return;
   }
   ST.saving=false; ST.modalErr='';
