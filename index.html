@@ -2576,7 +2576,10 @@ const ACEITE_SLUG_BY_TYPE = { svc:'motor', svc_trans:'transmision', svc_diff:'di
 const ACTION_SLUGS = new Set(['aceite','reparacion','registro','checklist-nuevo','golpes','chequeo-nuevo']);
 
 function parsePath(pathname){
-  const seg = decodeURIComponent(pathname).replace(/^\/+|\/+$/g,'').split('/').filter(Boolean);
+  // Partir el path CRUDO por '/', y decodificar cada segmento después. Si se
+  // decodifica el path completo antes de partir, un id con '/' (ej. "75 / 901"
+  // -> "75%20%2F%20901") se rompe en dos segmentos y la unidad no se encuentra.
+  const seg = pathname.replace(/^\/+|\/+$/g,'').split('/').filter(Boolean).map(s=>{ try{ return decodeURIComponent(s); }catch(e){ return s; } });
   if(!seg.length) return {view:'fleet'};
   if(HUB_SLUGS[seg[0]]) return {view:HUB_SLUGS[seg[0]]};
   if(seg[0]==='unidad' && seg[1]){
