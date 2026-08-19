@@ -830,7 +830,7 @@ function unitStatus(bus){
   if(overdue) return {group:'atencion', badge:'Servicio vencido', cls:'b-bad', reason:`${overdue.label} · ${fmt(overdue.by)} km pasados`};
   let tireBad=null;
   Object.entries(bus.tires||{}).forEach(([pos,t])=>{ if(t){ const km=tireKM(t,bus.km); if(km>=70000 && (!tireBad||km>tireBad.km)) tireBad={pos,km}; } });
-  if(tireBad) return {group:'atencion', badge:'Llanta baja', cls:'b-warn', reason:`${POS_NAMES[tireBad.pos]||tireBad.pos} · ${fmt(tireBad.km)} km`};
+  if(tireBad) return {group:'atencion', badge:'Excede km', cls:'b-warn', reason:`${POS_NAMES[tireBad.pos]||tireBad.pos} · ${fmt(tireBad.km)} km`};
   if(soon) return {group:'vencer', badge:`Servicio en ${fmt(soon.rem)} km`, cls:'b-warn', reason:soon.label};
   if(bus.client==='Pasaje'){
     const hoy=ST.chequeos.some(c=>c.bus_id===bus.id && c.fecha===today());
