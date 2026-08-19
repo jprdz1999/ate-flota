@@ -539,7 +539,7 @@ function oilInterval(bus){ return bus.oil_interval||(bus.type==='bus'?30000:1000
 function applicableServices(bus){
   const svcs=[
     {type:'svc',      label:'Aceite de motor',       interval:oilInterval(bus)},
-    {type:'svc_trans',label:'Aceite de transmisión', interval:60000},
+    {type:'svc_trans',label:'Aceite de transmisión', interval:90000},
   ];
   if(bus.type!=='urvan') svcs.push({type:'svc_diff',label:'Aceite diferencial',interval:60000});
   return svcs;
