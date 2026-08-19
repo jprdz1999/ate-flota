@@ -89,6 +89,12 @@
 .cl-btn.ok{background:var(--green-bg);color:var(--green-dark);border-color:var(--green)}
 .cl-btn.bad{background:var(--red-bg);color:var(--red-dark);border-color:var(--red)}
 .cl-btn.na{background:var(--bg3);color:var(--text3);border-color:var(--border)}
+.cl-btn.half{background:var(--amber-bg);color:var(--amber-dark);border-color:var(--amber)}
+.cl-tg.four .cl-btn{min-width:30px;padding:3px 6px}
+.rep-row{display:flex;gap:6px;align-items:stretch;margin-bottom:6px}
+.rep-row input{flex:1;min-width:0}
+.rep-del{flex-shrink:0;width:38px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text3);cursor:pointer;font-size:14px;line-height:1}
+.rep-del:hover{background:var(--red-bg);color:var(--red-dark);border-color:var(--red)}
 .cl-hist-item{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:0.5px solid var(--border)}
 .cl-hist-item:last-child{border-bottom:none}
 .issue-item{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:0.5px solid var(--border)}
@@ -568,6 +574,10 @@ function getChecklistFailures(data){
   Object.entries(data.niveles||{}).forEach(([k,v])=>{ if(v==='M') f.push(k); });
   return f;
 }
+// Llantas a media vida: aviso, no falla (no cambia `passed`).
+function getChecklistWarnings(data){
+  return Object.entries(data.llantas||{}).filter(([,v])=>v==='1/2').map(([k])=>`${k} a 1/2`);
+}
 function getFleetIndicators(bus){
   const svcAl=getServiceAlert(bus);
   let oil,oilTip;
@@ -596,8 +606,12 @@ function clBoolRow(pfx,items){
 function clBMNRow(pfx,items){
   return items.map((item,i)=>`<div class="cl-item"><span class="cl-item-lbl">${item}</span><div class="cl-tg" id="${pfx}-${i}"><button class="cl-btn ok" onclick="clToggle(this,'ok')">B</button><button class="cl-btn" onclick="clToggle(this,'bad')">M</button><button class="cl-btn" onclick="clToggle(this,'na')">NA</button></div></div>`).join('');
 }
+// Llantas: B / ½ (media vida) / M / NA — el medio desgaste es aviso, no falla.
+function clTireRow(pfx,items){
+  return items.map((item,i)=>`<div class="cl-item"><span class="cl-item-lbl">${item}</span><div class="cl-tg four" id="${pfx}-${i}"><button class="cl-btn ok" onclick="clToggle(this,'ok')">B</button><button class="cl-btn" onclick="clToggle(this,'half')">1/2</button><button class="cl-btn" onclick="clToggle(this,'bad')">M</button><button class="cl-btn" onclick="clToggle(this,'na')">NA</button></div></div>`).join('');
+}
 function clToggle(btn,val){
-  btn.closest('.cl-tg').querySelectorAll('.cl-btn').forEach(b=>b.classList.remove('ok','bad','na'));
+  btn.closest('.cl-tg').querySelectorAll('.cl-btn').forEach(b=>b.classList.remove('ok','bad','na','half'));
   btn.classList.add(val);
 }
 function clReadBool(pfx,items){
@@ -609,6 +623,37 @@ function clReadBMN(pfx,items){
   const r={};
   items.forEach((item,i)=>{ const g=document.getElementById(`${pfx}-${i}`); r[item]=g?.querySelector('.cl-btn.bad')?'M':g?.querySelector('.cl-btn.na')?'NA':'B'; });
   return r;
+}
+function clReadTire(pfx,items){
+  const r={};
+  items.forEach((item,i)=>{
+    const g=document.getElementById(`${pfx}-${i}`);
+    r[item]=g?.querySelector('.cl-btn.bad')?'M':g?.querySelector('.cl-btn.half')?'1/2':g?.querySelector('.cl-btn.na')?'NA':'B';
+  });
+  return r;
+}
+
+// ─── Reparaciones o acciones: lista repetible (una fila = una acción) ─────────
+function clRepRow(){
+  return `<div class="rep-row">
+    <input type="text" class="cl-rep-input" placeholder="Ej: Cambiar parabrisas" onkeydown="if(event.key==='Enter'){event.preventDefault();clAddRep();}">
+    <button type="button" class="rep-del" title="Quitar" onclick="clDelRep(this)">✕</button>
+  </div>`;
+}
+function clAddRep(){
+  const c=document.getElementById('cl-reps'); if(!c) return;
+  c.insertAdjacentHTML('beforeend',clRepRow());
+  const ins=c.querySelectorAll('.cl-rep-input');
+  ins[ins.length-1]?.focus();
+}
+function clDelRep(btn){
+  const c=document.getElementById('cl-reps'); if(!c) return;
+  const rows=c.querySelectorAll('.rep-row');
+  if(rows.length<=1){ const i=rows[0]?.querySelector('.cl-rep-input'); if(i){ i.value=''; i.focus(); } return; }
+  btn.closest('.rep-row')?.remove();
+}
+function clReadReps(){
+  return Array.from(document.querySelectorAll('#cl-reps .cl-rep-input')).map(i=>i.value.trim()).filter(Boolean);
 }
 
 function applyReportFilters(){
@@ -1165,11 +1210,13 @@ function checklistBody(bus){
     <div class="cl-section"><div class="cl-sec-hdr">Documentación</div>${clBoolRow('cl-docs',CL_DOCS)}</div>
     <div class="cl-section"><div class="cl-sec-hdr">Parte Externa</div>${clBoolRow('cl-externo',CL_EXTERNO)}</div>
     <div class="cl-section"><div class="cl-sec-hdr">Carrocería <span style="font-size:10px;font-weight:400;text-transform:none;letter-spacing:0">B / M / NA</span></div>${clBMNRow('cl-carroceria',CL_CARROCERIA)}</div>
-    <div class="cl-section"><div class="cl-sec-hdr">Estado de Llantas <span style="font-size:10px;font-weight:400;text-transform:none;letter-spacing:0">B / M / NA</span></div>${clBMNRow('cl-llantas',CL_LLANTAS)}</div>
+    <div class="cl-section"><div class="cl-sec-hdr">Estado de Llantas <span style="font-size:10px;font-weight:400;text-transform:none;letter-spacing:0">B / 1/2 / M / NA</span></div>${clTireRow('cl-llantas',CL_LLANTAS)}</div>
     <div class="cl-section"><div class="cl-sec-hdr">Luces</div>${clBoolRow('cl-luces',CL_LUCES)}</div>
     <div class="cl-section"><div class="cl-sec-hdr">Niveles <span style="font-size:10px;font-weight:400;text-transform:none;letter-spacing:0">B / M / NA</span></div>${clBMNRow('cl-niveles',CL_NIVELES)}</div>
     <div class="form-row"><label>Reparaciones o acciones requeridas</label>
-      <textarea id="cl-reparaciones" rows="2" placeholder="Listar trabajos pendientes — se agregarán como acciones a resolver…"></textarea></div>
+      <div id="cl-reps">${clRepRow()}</div>
+      <button type="button" class="btn-ghost-lg" style="margin-top:2px" onclick="clAddRep()">+ Agregar otra reparación</button>
+      <div style="font-size:11.5px;color:var(--text3);margin-top:6px">Cada renglón se registra como una acción pendiente por separado.</div></div>
     <div class="cl-section"><div class="cl-sec-hdr">¿Golpe nuevo? — marca solo lo que no aparezca en gris</div>
       <div id="cl-golpes">${renderClGolpesInner()}</div></div>
     <div id="cl-form-err" class="modal-err" style="display:none;margin-top:8px"></div>`;
@@ -2028,12 +2075,14 @@ function renderChecklist(bus){
       const data=parseChecklist(l);
       const passed=data?.passed!==false;
       const failures=data?getChecklistFailures(data):[];
+      const warns=data?getChecklistWarnings(data):[];
       h+=`<div class="cl-hist-item">
         <div style="width:8px;height:8px;border-radius:50%;background:${passed?'var(--green)':'var(--red)'};flex-shrink:0;margin-top:3px"></div>
         <div style="flex:1;min-width:0">
           <div style="font-weight:500;font-size:13px">${l.date}${data?.hora?' &nbsp;·&nbsp; '+data.hora:''}</div>
           <div style="font-size:11px;color:var(--text2);margin-top:1px">${data?.conductor||'—'}${l.km_after?' &nbsp;·&nbsp; '+fmt(l.km_after)+' km':''}</div>
           ${failures.length?`<div style="font-size:11px;color:var(--red-dark);margin-top:2px">${failures.slice(0,3).join(' · ')}${failures.length>3?' +'+( failures.length-3)+' más':''}</div>`:''}
+          ${warns.length?`<div style="font-size:11px;color:var(--amber-dark);margin-top:2px">${warns.slice(0,3).join(' · ')}${warns.length>3?' +'+(warns.length-3)+' más':''}</div>`:''}
         </div>
         <span class="pill ${passed?'pill-good':'pill-worn'}" style="font-size:10px;flex-shrink:0">${passed?'OK':'Observ.'}</span>
       </div>`;
@@ -2068,8 +2117,8 @@ function renderChecklistForm(bus){
       ${clBMNRow('cl-carroceria',CL_CARROCERIA)}
     </div>
     <div class="cl-section">
-      <div class="cl-sec-hdr">Estado de Llantas <span style="font-size:10px;font-weight:400;text-transform:none;letter-spacing:0">B = Bueno &nbsp; M = Malo &nbsp; NA = No aplica</span></div>
-      ${clBMNRow('cl-llantas',CL_LLANTAS)}
+      <div class="cl-sec-hdr">Estado de Llantas <span style="font-size:10px;font-weight:400;text-transform:none;letter-spacing:0">B = Bueno &nbsp; 1/2 = Media vida &nbsp; M = Malo &nbsp; NA = No aplica</span></div>
+      ${clTireRow('cl-llantas',CL_LLANTAS)}
     </div>
     <div class="cl-section"><div class="cl-sec-hdr">Luces</div>${clBoolRow('cl-luces',CL_LUCES)}</div>
     <div class="cl-section">
@@ -2078,7 +2127,8 @@ function renderChecklistForm(bus){
     </div>
 
     <div class="form-row"><label>Reparaciones o acciones requeridas</label>
-      <textarea id="cl-reparaciones" rows="2" placeholder="Listar trabajos pendientes — se agregarán como acciones a resolver…"></textarea></div>
+      <div id="cl-reps">${clRepRow()}</div>
+      <button type="button" class="btn-ghost-lg" style="margin-top:2px" onclick="clAddRep()">+ Agregar otra reparación</button></div>
 
     <div id="cl-form-err" class="modal-err" style="display:none;margin-top:8px"></div>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:1rem">
@@ -2467,11 +2517,13 @@ async function doSaveChecklist(busId){
     docs:clReadBool('cl-docs',CL_DOCS),
     externo:clReadBool('cl-externo',CL_EXTERNO),
     carroceria:clReadBMN('cl-carroceria',CL_CARROCERIA),
-    llantas:clReadBMN('cl-llantas',CL_LLANTAS),
+    llantas:clReadTire('cl-llantas',CL_LLANTAS),
     luces:clReadBool('cl-luces',CL_LUCES),
     niveles:clReadBMN('cl-niveles',CL_NIVELES),
-    reparaciones:(document.getElementById('cl-reparaciones')?.value||'').trim(),
   };
+  const reps=clReadReps();
+  data.reparaciones_list=reps;
+  data.reparaciones=reps.join(' · ');   // compat con inspecciones previas (texto único)
   data.passed=!(
     Object.values(data.docs).some(v=>v===false)||
     Object.values(data.carroceria).some(v=>v==='M')||
@@ -2481,9 +2533,9 @@ async function doSaveChecklist(busId){
   const prevKm=bus.km;
   bus.km=kmAfter;
   const prevIssues=JSON.parse(JSON.stringify(bus.open_issues||[]));
-  if(data.reparaciones){
+  if(reps.length){
     if(!bus.open_issues) bus.open_issues=[];
-    bus.open_issues.push({id:uid(),text:data.reparaciones,date:fecha,resolved:false});
+    reps.forEach(t=>bus.open_issues.push({id:uid(),text:t,date:fecha,resolved:false}));
   }
   const log={id:uid(),bus_id:busId,city:bus.city,type:'checklist',date:fecha,description:'__CL__'+JSON.stringify(data),cost:0,km_after:kmAfter,ts:Date.now()};
   ST.logs.unshift(log);
