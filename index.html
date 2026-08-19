@@ -378,6 +378,21 @@ async function dbSaveBus(bus){
   const {error}=await sb.from('buses').upsert(bus);
   return {error};
 }
+// Actualiza SOLO las columnas que tocó la captura. Un upsert de la fila completa
+// escribía km/tires/open_issues desde el snapshot en memoria: una pestaña abierta
+// desde antes pisaba con datos viejos lo capturado en otra sesión (p. ej. borraba
+// el odómetro de una unidad ya inspeccionada).
+async function dbUpdateBus(id, patch){
+  if(!sb) return {error:'Sin conexión'};
+  const {error}=await sb.from('buses').update(patch).eq('id',id);
+  return {error};
+}
+// El odómetro solo sube: si otra sesión ya registró una lectura mayor, no la baja.
+async function dbUpdateBusKm(id, km){
+  if(!sb) return {error:'Sin conexión'};
+  const {error}=await sb.from('buses').update({km}).eq('id',id).or('km.is.null,km.lte.'+km);
+  return {error};
+}
 async function dbSaveLog(log){
   if(!sb) return {error:'Sin conexión'};
   const {error}=await sb.from('service_logs').insert(log);
@@ -2312,7 +2327,7 @@ async function doSaveTire(busId){
     ST.logs.unshift(log);
     ST.saving=true; ST.modalErr=''; render();
     const {error:e1}=await dbSaveLog(log);
-    const {error:e2}=await dbSaveBus(bus);
+    const {error:e2}=await dbUpdateBus(busId,{tires:bus.tires});
     if(e1||e2){
       bus.km=prevKm; bus.tires=prevTires; ST.logs=ST.logs.filter(l=>l.id!==log.id);
       ST.saving=false; ST.modalErr='Error al guardar. Intenta de nuevo.'; render(); return;
@@ -2330,7 +2345,7 @@ async function doSaveTire(busId){
   const logEntry={id:uid(),bus_id:busId,city:bus.city,type:'tire',date,description:`${TIRE_EVENTS[event]} · ${POS_NAMES[pos]}${brand?' · '+brand:''}`,cost,km_after:kmAfter,ts:Date.now()};
   ST.logs.unshift(logEntry);
   ST.saving=true; ST.modalErr=''; render();
-  const {error:e1}=await dbSaveBus(bus);
+  const {error:e1}=await dbUpdateBus(busId,{tires:bus.tires});
   const {error:e2}=await dbSaveLog(logEntry);
   if(e1||e2){
     bus.km=prevKm; bus.tires=prevTires;
@@ -2436,7 +2451,7 @@ async function doSaveOilInterval(busId){
   const prev=bus.oil_interval;
   bus.oil_interval=Math.max(1000,val);
   render();
-  const {error}=await dbSaveBus(bus);
+  const {error}=await dbUpdateBus(busId,{oil_interval:bus.oil_interval});
   if(error){ bus.oil_interval=prev; showToast('Error al guardar intervalo.','error'); render(); }
   else showToast('Intervalo actualizado');
 }
@@ -2540,9 +2555,10 @@ async function doSaveChecklist(busId){
   const log={id:uid(),bus_id:busId,city:bus.city,type:'checklist',date:fecha,description:'__CL__'+JSON.stringify(data),cost:0,km_after:kmAfter,ts:Date.now()};
   ST.logs.unshift(log);
   ST.saving=true; render();
-  const {error:e1}=await dbSaveBus(bus);
+  const {error:e1}=await dbUpdateBus(busId,{open_issues:bus.open_issues||[]});
+  const {error:e1b}=await dbUpdateBusKm(busId,kmAfter);
   const {error:e2}=await dbSaveLog(log);
-  if(e1||e2){
+  if(e1||e1b||e2){
     bus.km=prevKm; bus.open_issues=prevIssues; ST.logs=ST.logs.filter(l=>l.id!==log.id);
     ST.saving=false; ST.clView='form'; render();
     showClErr('Error al guardar. Intenta de nuevo.'); return;
@@ -2574,7 +2590,7 @@ async function doResolveIssue(busId,issueId){
   if(!iss||iss.resolved) return;
   iss.resolved=true;
   render();
-  const {error}=await dbSaveBus(bus);
+  const {error}=await dbUpdateBus(busId,{open_issues:bus.open_issues});
   if(error){ iss.resolved=false; showToast('Error al actualizar. Intenta de nuevo.','error'); render(); }
   else showToast('Acción resuelta');
 }
@@ -2690,6 +2706,40 @@ function navigate(path, opts){
 function goBack(){ history.length>1 ? history.back() : navigate('/'); }
 
 window.addEventListener('popstate', ()=>{ applyRoute(); render(); });
+
+// ─── FRESCURA DE DATOS ───────────────────────────────────────────────────────
+// Los datos se cargaban UNA sola vez al abrir la app y no se refrescaban nunca:
+// una pestaña abierta desde antes seguía mostrando "Sin odómetro registrado" en
+// una unidad ya inspeccionada desde otra pestaña o desde el teléfono. Se recarga
+// al volver a la pestaña, al recuperar conexión y cada 5 min — nunca encima de
+// una captura en curso (guardando, pantalla de acción, modal o campo enfocado).
+let lastSync=Date.now();
+const SYNC_MIN_MS=20000;
+async function refreshData(force){
+  if(!sb||!ST.auth) return;
+  if(!force && Date.now()-lastSync<SYNC_MIN_MS) return;
+  if(ST.saving||ST.action||ST.modal) return;
+  const ae=document.activeElement;
+  if(ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
+  lastSync=Date.now();
+  const antes=dataSig();
+  const {error}=await loadFromSupabase();
+  if(error){ console.error('Error refrescando datos:', error); return; }
+  await loadChequeosData();
+  if(dataSig()===antes) return;          // nada cambió: no repintar
+  const y=window.scrollY;
+  render();
+  window.scrollTo(0,y);
+}
+// Firma barata de lo que se pinta: si no cambia, no vale la pena repintar.
+function dataSig(){
+  return ST.logs.length+'|'+ST.chequeos.length+'|'+ST.danos.length+'|'+
+    ST.buses.map(b=>b.id+':'+(b.km||0)+':'+((b.open_issues||[]).filter(i=>!i.resolved).length)).join(',');
+}
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') refreshData(); });
+window.addEventListener('focus', ()=>refreshData());
+window.addEventListener('online', ()=>refreshData(true));
+setInterval(()=>refreshData(), 300000);
 
 // keyboard shortcut: Enter on password field
 document.addEventListener('keydown', e=>{ if(e.key==='Enter'&&!ST.auth){ doLogin(); } });
