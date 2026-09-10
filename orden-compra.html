@@ -10,7 +10,14 @@
 <style>
 .oc-hdr{display:flex;align-items:center;gap:10px;padding:1rem 0 0.75rem;margin-bottom:1rem;border-bottom:0.5px solid var(--border)}
 .oc-hdr h1{font-size:16px;font-weight:600;flex:1}
-#oc-monto,#oc-concepto{font-size:16px}
+#oc-monto,#oc-concepto,#oc-proveedor,#oc-cuenta{font-size:16px}
+.oc-prov-sugg{max-height:224px;overflow-y:auto}
+.oc-sugg-nom{font-weight:500}
+.oc-sugg-sub{font-size:11px;color:var(--text2);margin-top:1px}
+.oc-hint{font-size:12px;color:var(--text2);margin-top:4px;line-height:1.45}
+.oc-hint:empty{display:none}
+.oc-hint .lnk{color:var(--blue);cursor:pointer;text-decoration:underline}
+.oc-ok{font-size:12px;color:var(--green);margin-top:4px;line-height:1.45}
 </style>
 </head>
 <body>
@@ -39,7 +46,10 @@ let ST = {
 
   view:'form', // 'form' | 'receipt'
   ocBusId:'', ocTipo:'', ocConcepto:'', ocProveedor:'', ocCuenta:'', ocMonto:'', ocSolicita:'', ocBaseId:'',
-  ocErr:'', ocLastOrder:null
+  ocErr:'', ocLastOrder:null,
+
+  // Memoria de proveedores: se deriva de purchase_orders, no hay tabla nueva.
+  proveedores:[], ocProvMatches:[], ocProvKnown:null, ocCuentaAuto:false
 };
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
@@ -64,13 +74,20 @@ async function init(){
 
 // ─── DATA LAYER ──────────────────────────────────────────────────────────────
 async function loadData(){
-  const [r1,r2]=await Promise.all([
+  const [r1,r2,r3]=await Promise.all([
     sb.from('buses').select('*'),
     sb.from('bases').select('*'),
+    // Solo para la memoria de proveedores: nombre + ultima cuenta usada.
+    sb.from('purchase_orders')
+      .select('proveedor,cuenta_referencia,bus_id,created_at')
+      .order('created_at',{ascending:false}).limit(1000),
   ]);
   const err=r1.error||r2.error;
   if(err) return {error:err.message};
   ST.buses=r1.data||[]; ST.bases=r2.data||[];
+  // Que falle el historial no debe impedir capturar una orden nueva.
+  if(r3.error){ console.warn('Sin historial de proveedores:', r3.error.message); ST.proveedores=[]; }
+  else buildProveedores(r3.data||[]);
   return {error:null};
 }
 async function dbSaveOrder(order){
@@ -85,6 +102,132 @@ function mxn(n){ return '$'+Number(n||0).toLocaleString('es-MX',{minimumFraction
 function authCities(){ return ST.auth==='all'?null:ST.auth.split(','); }
 function cityBuses(){ const c=authCities(); return ST.buses.filter(b=>!c||c.includes(b.city)); }
 function fmtDateTime(iso){ return new Date(iso).toLocaleString('es-MX',{dateStyle:'medium',timeStyle:'short'}); }
+
+// ─── MEMORIA DE PROVEEDORES ──────────────────────────────────────────────────
+// No hay tabla de proveedores: la fuente de verdad son las ordenes ya
+// capturadas. De cada proveedor distinto guardamos su cuenta/referencia mas
+// reciente y cuantas ordenes lleva. Los proveedores usados en las ciudades del
+// usuario van primero — un taller de Tijuana no le sirve a quien captura en
+// Cancun.
+function ocNorm(s){
+  return (s==null?'':String(s)).normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .toLowerCase().replace(/\s+/g,' ').trim();
+}
+function buildProveedores(rows){
+  const myBuses=new Set(cityBuses().map(b=>b.id));
+  const map=new Map(); // rows viene ordenado desc: el primero es el mas reciente
+  rows.forEach(o=>{
+    const nombre=(o.proveedor||'').trim();
+    const key=ocNorm(nombre);
+    if(!key) return;
+    let p=map.get(key);
+    if(!p){ p={key, nombre, cuenta:null, n:0, ultima:o.created_at, mia:false}; map.set(key,p); }
+    p.n++;
+    if(!p.cuenta && (o.cuenta_referencia||'').trim()) p.cuenta=o.cuenta_referencia.trim();
+    if(myBuses.has(o.bus_id)) p.mia=true;
+  });
+  ST.proveedores=[...map.values()].sort((a,b)=>
+    (b.mia-a.mia) || (b.n-a.n) || String(b.ultima).localeCompare(String(a.ultima)));
+}
+function ocFindProveedor(text){
+  const k=ocNorm(text);
+  return k ? (ST.proveedores.find(p=>p.key===k)||null) : null;
+}
+function ocMatchProveedores(text){
+  const k=ocNorm(text);
+  if(k.length<2) return [];
+  return ST.proveedores
+    .filter(p=>p.key!==k && p.key.includes(k))
+    .sort((a,b)=>(b.key.startsWith(k)-a.key.startsWith(k)) || (b.mia-a.mia) || (b.n-a.n))
+    .slice(0,6);
+}
+// Que el proveedor recien capturado ya sirva para la siguiente orden de la
+// misma sesion, sin recargar la pagina.
+function ocRememberProveedor(o){
+  const nombre=((o&&o.proveedor)||'').trim();
+  const key=ocNorm(nombre);
+  if(!key) return;
+  const cuenta=(o.cuenta_referencia||'').trim()||null;
+  const p=ST.proveedores.find(x=>x.key===key);
+  if(p){ p.n++; p.nombre=nombre; p.mia=true; p.ultima=o.created_at; if(cuenta) p.cuenta=cuenta; }
+  else ST.proveedores.unshift({key, nombre, cuenta, n:1, ultima:o.created_at, mia:true});
+}
+
+// El input NO llama a render(): un render() completo reconstruiria el <input> y
+// le quitaria el foco al usuario a media palabra (mismo patron que el
+// autocomplete de operador en chequeo.html).
+function ocProveedorInput(text){
+  ST.ocProveedor=text;
+  const exact=ocFindProveedor(text);
+  ST.ocProvKnown=exact;
+  ST.ocProvMatches=exact?[]:ocMatchProveedores(text);
+  if(exact&&exact.cuenta) ocFillCuenta(exact);
+  else if(ST.ocCuentaAuto) ocClearCuenta();
+  ocRefreshProvUI();
+}
+function ocPickProveedor(i){
+  const p=ST.ocProvMatches[i];
+  if(!p) return;
+  ST.ocProveedor=p.nombre;
+  ST.ocProvKnown=p;
+  ST.ocProvMatches=[];
+  const inp=document.getElementById('oc-proveedor');
+  if(inp) inp.value=p.nombre;
+  if(p.cuenta) ocFillCuenta(p);
+  else if(ST.ocCuentaAuto) ocClearCuenta();
+  ocRefreshProvUI();
+  if(inp) inp.focus();
+}
+// La cuenta autocompletada queda marcada como "auto": si el usuario la escribe
+// o la corrige a mano ya no la pisamos, y si cambia de proveedor se limpia.
+function ocFillCuenta(p){
+  if(!p.cuenta) return;
+  if((ST.ocCuenta||'').trim() && !ST.ocCuentaAuto) return;
+  ST.ocCuenta=p.cuenta; ST.ocCuentaAuto=true;
+  const inp=document.getElementById('oc-cuenta');
+  if(inp) inp.value=p.cuenta;
+}
+function ocClearCuenta(){
+  ST.ocCuenta=''; ST.ocCuentaAuto=false;
+  const inp=document.getElementById('oc-cuenta');
+  if(inp) inp.value='';
+  ocRefreshCuentaUI();
+}
+function ocCuentaInput(text){ ST.ocCuenta=text; ST.ocCuentaAuto=false; ocRefreshCuentaUI(); }
+function ocRefreshProvUI(){
+  const el=document.getElementById('oc-prov-sugg');
+  if(el) el.innerHTML=renderProvSuggInner();
+  ocRefreshCuentaUI();
+}
+function ocRefreshCuentaUI(){
+  const el=document.getElementById('oc-cuenta-hint');
+  if(el) el.innerHTML=renderCuentaHintInner();
+}
+function renderProvSuggInner(){
+  const p=ST.ocProvKnown;
+  if(p){
+    const ordenes=`${p.n} ${p.n===1?'orden previa':'órdenes previas'}`;
+    return `<div class="oc-ok">✓ Proveedor conocido · ${ordenes}${p.cuenta?` · cuenta ${escHtml(p.cuenta)}`:' · sin cuenta registrada'}</div>`;
+  }
+  if(ST.ocProvMatches.length){
+    return `<div class="chq-op-sugg oc-prov-sugg">
+      ${ST.ocProvMatches.map((m,i)=>`<div class="chq-op-sugg-item" onclick="ocPickProveedor(${i})">
+        <div class="oc-sugg-nom">${escHtml(m.nombre)}</div>
+        <div class="oc-sugg-sub">${m.cuenta?`Cuenta ${escHtml(m.cuenta)}`:'Sin cuenta registrada'} · ${m.n} ${m.n===1?'orden':'órdenes'}</div>
+      </div>`).join('')}
+    </div>`;
+  }
+  if(ocNorm(ST.ocProveedor).length>=2){
+    return `<div class="oc-sugg-sub" style="margin-top:4px">Proveedor nuevo — se guardará con esta orden.</div>`;
+  }
+  return '';
+}
+function renderCuentaHintInner(){
+  if(ST.ocCuentaAuto && ST.ocProvKnown){
+    return `Autocompletada de la última orden de ${escHtml(ST.ocProvKnown.nombre)} · <span class="lnk" onclick="ocClearCuenta()">borrar</span>`;
+  }
+  return '';
+}
 
 // ─── RENDER ──────────────────────────────────────────────────────────────────
 function render(){
@@ -147,6 +290,7 @@ function renderApp(){
 function resetForm(){
   ST.ocBusId=''; ST.ocTipo=''; ST.ocConcepto=''; ST.ocProveedor=''; ST.ocCuenta='';
   ST.ocMonto=''; ST.ocSolicita=ST.authEmail||''; ST.ocBaseId=''; ST.ocErr='';
+  ST.ocProvMatches=[]; ST.ocProvKnown=null; ST.ocCuentaAuto=false;
 }
 
 function renderForm(){
@@ -168,10 +312,12 @@ function renderForm(){
       <textarea id="oc-concepto" rows="3" placeholder="¿Qué se va a hacer o comprar?" oninput="ST.ocConcepto=this.value">${escHtml(ST.ocConcepto)}</textarea>
     </div>
     <div class="form-row"><label>Proveedor *</label>
-      <input type="text" id="oc-proveedor" placeholder="Nombre del proveedor o taller" value="${escHtml(ST.ocProveedor)}" oninput="ST.ocProveedor=this.value">
+      <input type="text" id="oc-proveedor" placeholder="Nombre del proveedor o taller" value="${escHtml(ST.ocProveedor)}" oninput="ocProveedorInput(this.value)" autocomplete="off">
+      <div id="oc-prov-sugg">${renderProvSuggInner()}</div>
     </div>
     <div class="form-row"><label>Cuenta / referencia</label>
-      <input type="text" id="oc-cuenta" placeholder="Opcional" value="${escHtml(ST.ocCuenta)}" oninput="ST.ocCuenta=this.value">
+      <input type="text" id="oc-cuenta" placeholder="Opcional" value="${escHtml(ST.ocCuenta)}" oninput="ocCuentaInput(this.value)">
+      <div class="oc-hint" id="oc-cuenta-hint">${renderCuentaHintInner()}</div>
     </div>
     <div class="form-row"><label>Monto (MXN) *</label>
       <input type="number" id="oc-monto" inputmode="decimal" step="0.01" min="0" placeholder="0.00" value="${escHtml(ST.ocMonto)}" oninput="ST.ocMonto=this.value">
@@ -222,6 +368,7 @@ async function doSaveOrder(){
   ST.saving=false;
   if(error){ ST.ocErr='Error al guardar. Intenta de nuevo.'; render(); return; }
   ST.ocLastOrder=data;
+  ocRememberProveedor(data);
   ST.view='receipt';
   render();
 }
