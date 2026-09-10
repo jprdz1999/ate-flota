@@ -42,12 +42,17 @@
 .log-item:last-child{border-bottom:none}
 .dot{width:8px;height:8px;border-radius:50%;margin-top:5px;flex-shrink:0}
 .d-oil{background:var(--green)}.d-repair{background:var(--red)}.d-km{background:var(--blue)}.d-compra{background:var(--accent)}
-/* Pendientes de pago: la casilla es la accion, la fila entera es el area de clic. */
-.pay-row{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:11px 0;border-bottom:0.5px solid var(--border);cursor:pointer}
+/* Pendientes de pago: cada orden se resuelve con una de dos acciones. En movil
+   los botones bajan a su propio renglon para que no queden apretados. */
+.pay-row{display:grid;grid-template-columns:1fr auto;gap:8px 12px;padding:12px 0;border-bottom:0.5px solid var(--border)}
 .pay-row:last-of-type{border-bottom:none}
-.pay-row:hover{background:var(--bg2)}
-.pay-row input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);cursor:pointer;margin:0}
+.pay-row .pay-amt{text-align:right}
 .pay-row .amt{font-size:13px;font-weight:600;white-space:nowrap;display:block;margin-bottom:3px}
+.pay-row .pay-actions{grid-column:1/-1;display:flex;gap:8px;justify-content:flex-end}
+@media(min-width:680px){
+  .pay-row{grid-template-columns:1fr auto auto;align-items:center}
+  .pay-row .pay-actions{grid-column:auto}
+}
 .li-title{font-size:13px;font-weight:500;margin-bottom:2px;color:var(--text)}
 .li-meta{font-size:11px;color:var(--text2)}
 .li-cost{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap}
@@ -1846,6 +1851,17 @@ async function syncOrdenBitacora(o){
   if(error){ ST.logs.unshift(existente); return {error:error.message||error}; }
   return {error:null};
 }
+// Anular = Rechazada. Se confirma porque es la acción negativa y el panel se
+// usa en móvil, donde un dedo se resbala fácil. Es reversible desde el status.
+function doAnularOrden(id){
+  const o=ST.ordenes.find(x=>x.id===id);
+  if(!o) return;
+  const bus=ST.buses.find(b=>b.id===o.bus_id);
+  const ok=confirm(`¿Anular ${o.folio} — ${bus?.name||'unidad'} · ${o.proveedor} · ${mxn(o.monto)}?\n\n`+
+    `Queda como Rechazada y sale de pendientes. No entra a la bitácora.`);
+  if(!ok) return;
+  doChangeOrdenStatus(id,'rechazada');
+}
 async function doChangeOrdenStatus(id,status){
   const o=ST.ordenes.find(x=>x.id===id);
   if(!o||o.status===status) return;
@@ -1857,6 +1873,7 @@ async function doChangeOrdenStatus(id,status){
   render();
   if(logErr) showToast('Status actualizado, pero la bitácora falló: '+logErr,'error');
   else if(status==='pagada') showToast('Pagada · agregada a la bitácora de la unidad');
+  else if(status==='rechazada') showToast('Orden anulada');
   else showToast('Status actualizado');
 }
 // Panel de acción del taller: lo que falta pagar. Marcar la casilla paga la
@@ -1878,20 +1895,25 @@ function renderPendientesPago(){
     <div class="section-hdr"><h4>Pendientes de pago — ${pend.length}</h4>
       <span style="font-size:14px;font-weight:600">${mxn(total)}</span></div>
     <p style="font-size:12px;color:var(--text2);line-height:1.45;margin-bottom:0.5rem">
-      Marca la casilla al pagar: la orden pasa a <b>Pagada</b> y se agrega a la bitácora e historial de la unidad.</p>`;
+      <b>Marcar pagada</b> agrega la orden a la bitácora e historial de la unidad.
+      <b>Anular</b> la deja como Rechazada y no toca la bitácora. Cualquiera de las dos
+      se puede revertir después desde el status en la tabla.</p>`;
   pend.forEach(o=>{
     const bus=ST.buses.find(b=>b.id===o.bus_id);
-    h+=`<label class="pay-row">
-      <input type="checkbox" onchange="doChangeOrdenStatus('${o.id}','pagada')">
+    h+=`<div class="pay-row">
       <div>
         <div class="li-title">${escHtml(o.folio)} · ${escHtml(bus?.name||'—')} · ${escHtml(o.proveedor)}</div>
         <div class="li-meta">${String(o.created_at).slice(0,10)} &nbsp;·&nbsp; ${escHtml(o.tipo_servicio)} &nbsp;·&nbsp; ${escHtml(o.concepto)}</div>
       </div>
-      <div style="text-align:right">
+      <div class="pay-amt">
         <span class="amt">${mxn(o.monto)}</span>
         <span class="pill ${OC_STATUS_PILL[o.status]||'pill-mid'}">${OC_STATUS_LABELS[o.status]||o.status}</span>
       </div>
-    </label>`;
+      <div class="pay-actions">
+        <button class="btn sm danger" onclick="doAnularOrden('${o.id}')">Anular</button>
+        <button class="btn sm primary" onclick="doChangeOrdenStatus('${o.id}','pagada')">Marcar pagada</button>
+      </div>
+    </div>`;
   });
   return h+`</div>`;
 }
