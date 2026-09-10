@@ -41,11 +41,11 @@ const STATUS_PILL = {pendiente:'pill-mid', autorizada:'pill-blue', pagada:'pill-
 let sb = null;
 let ST = {
   auth:null, role:null, authEmail:null, saving:false, loginErr:'',
-  buses:[], bases:[],
+  buses:[],
   toast:null, toastType:null,
 
   view:'form', // 'form' | 'receipt'
-  ocBusId:'', ocTipo:'', ocConcepto:'', ocProveedor:'', ocCuenta:'', ocMonto:'', ocSolicita:'', ocBaseId:'',
+  ocBusId:'', ocTipo:'', ocConcepto:'', ocProveedor:'', ocCuenta:'', ocMonto:'', ocSolicita:'',
   ocErr:'', ocLastOrder:null,
 
   // Memoria de proveedores: se deriva de purchase_orders, no hay tabla nueva.
@@ -74,20 +74,18 @@ async function init(){
 
 // ─── DATA LAYER ──────────────────────────────────────────────────────────────
 async function loadData(){
-  const [r1,r2,r3]=await Promise.all([
+  const [r1,r2]=await Promise.all([
     sb.from('buses').select('*'),
-    sb.from('bases').select('*'),
     // Solo para la memoria de proveedores: nombre + ultima cuenta usada.
     sb.from('purchase_orders')
       .select('proveedor,cuenta_referencia,bus_id,created_at')
       .order('created_at',{ascending:false}).limit(1000),
   ]);
-  const err=r1.error||r2.error;
-  if(err) return {error:err.message};
-  ST.buses=r1.data||[]; ST.bases=r2.data||[];
+  if(r1.error) return {error:r1.error.message};
+  ST.buses=r1.data||[];
   // Que falle el historial no debe impedir capturar una orden nueva.
-  if(r3.error){ console.warn('Sin historial de proveedores:', r3.error.message); ST.proveedores=[]; }
-  else buildProveedores(r3.data||[]);
+  if(r2.error){ console.warn('Sin historial de proveedores:', r2.error.message); ST.proveedores=[]; }
+  else buildProveedores(r2.data||[]);
   return {error:null};
 }
 async function dbSaveOrder(order){
@@ -272,7 +270,7 @@ async function doLogin(){
 }
 async function doLogout(){
   await sb.auth.signOut();
-  ST.auth=null; ST.role=null; ST.authEmail=null; ST.buses=[]; ST.bases=[];
+  ST.auth=null; ST.role=null; ST.authEmail=null; ST.buses=[];
   ST.view='form';
   render();
 }
@@ -289,7 +287,7 @@ function renderApp(){
 
 function resetForm(){
   ST.ocBusId=''; ST.ocTipo=''; ST.ocConcepto=''; ST.ocProveedor=''; ST.ocCuenta='';
-  ST.ocMonto=''; ST.ocSolicita=ST.authEmail||''; ST.ocBaseId=''; ST.ocErr='';
+  ST.ocMonto=''; ST.ocSolicita=ST.authEmail||''; ST.ocErr='';
   ST.ocProvMatches=[]; ST.ocProvKnown=null; ST.ocCuentaAuto=false;
 }
 
@@ -325,12 +323,6 @@ function renderForm(){
     <div class="form-row"><label>Solicita *</label>
       <input type="text" id="oc-solicita" placeholder="Quién solicita la compra" value="${escHtml(ST.ocSolicita)}" oninput="ST.ocSolicita=this.value">
     </div>
-    <div class="form-row"><label>Base</label>
-      <select id="oc-base" onchange="ST.ocBaseId=this.value">
-        <option value="">— Sin base —</option>
-        ${ST.bases.map(b=>`<option value="${b.id}"${ST.ocBaseId===b.id?' selected':''}>${escHtml(b.nombre)}</option>`).join('')}
-      </select>
-    </div>
     <div class="err">${ST.ocErr}</div>
     <button class="btn primary full" onclick="doSaveOrder()" ${ST.saving?'disabled':''}>
       ${ST.saving?'<span class="spinner"></span>Guardando...':'Generar orden'}
@@ -347,7 +339,6 @@ async function doSaveOrder(){
   const cuenta=(document.getElementById('oc-cuenta')?.value||'').trim();
   const montoRaw=document.getElementById('oc-monto')?.value||'';
   const solicita=(document.getElementById('oc-solicita')?.value||'').trim();
-  const baseId=document.getElementById('oc-base')?.value||'';
   const monto=parseFloat(montoRaw);
 
   if(!busId){ ST.ocErr='Selecciona la unidad.'; render(); return; }
@@ -361,7 +352,7 @@ async function doSaveOrder(){
   const order={
     bus_id:busId, tipo_servicio:tipo, concepto, proveedor,
     cuenta_referencia:cuenta||null, monto:Math.round(monto*100)/100,
-    solicita, base_id:baseId||null
+    solicita
   };
   ST.saving=true; render();
   const {data,error}=await dbSaveOrder(order);
@@ -377,7 +368,6 @@ function renderReceipt(){
   const o=ST.ocLastOrder;
   if(!o){ ST.view='form'; return renderForm(); }
   const bus=ST.buses.find(b=>b.id===o.bus_id);
-  const base=ST.bases.find(b=>b.id===o.base_id);
   const canImage=!!window.htmlToImage;
   const canCopy=canImage && !!(navigator.clipboard && window.ClipboardItem);
 
@@ -397,7 +387,6 @@ function renderReceipt(){
       <div class="lbl">Monto MXN</div>
     </div>
     <div class="oc-receipt-row"><span class="lbl">Solicita</span><span class="val">${escHtml(o.solicita)}</span></div>
-    ${base?`<div class="oc-receipt-row"><span class="lbl">Base</span><span class="val">${escHtml(base.nombre)}</span></div>`:''}
     <div class="oc-receipt-row"><span class="lbl">Status</span><span class="val"><span class="oc-receipt-status ${STATUS_PILL[o.status]||'pill-mid'}">${STATUS_LABELS[o.status]||o.status}</span></span></div>
     <div class="oc-receipt-ft">Envía esta captura al grupo de WhatsApp para autorización</div>
   </div>`;

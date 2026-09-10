@@ -1981,11 +1981,10 @@ function renderComprasHub(){
 function exportComprasCSV(){
   const rows=applyComprasFilters();
   if(!rows.length) return;
-  const headers=['Folio','Fecha','Unidad','Tipo de servicio','Proveedor','Cuenta/Referencia','Monto','Solicita','Base','Status'];
+  const headers=['Folio','Fecha','Unidad','Tipo de servicio','Proveedor','Cuenta/Referencia','Monto','Solicita','Status'];
   const lines=[headers.join(',')];
   rows.forEach(o=>{
     const bus=ST.buses.find(b=>b.id===o.bus_id);
-    const base=ST.bases.find(b=>b.id===o.base_id);
     const cells=[
       o.folio,
       o.created_at.slice(0,10),
@@ -1995,7 +1994,6 @@ function exportComprasCSV(){
       `"${(o.cuenta_referencia||'').replace(/"/g,'""')}"`,
       o.monto,
       `"${(o.solicita||'').replace(/"/g,'""')}"`,
-      `"${(base?.nombre||'').replace(/"/g,'""')}"`,
       OC_STATUS_LABELS[o.status]||o.status
     ];
     lines.push(cells.join(','));
