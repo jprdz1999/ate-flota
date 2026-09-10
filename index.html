@@ -41,7 +41,13 @@
 .log-item{display:grid;grid-template-columns:8px 1fr auto;gap:10px;padding:10px 0;border-bottom:0.5px solid var(--border);align-items:start}
 .log-item:last-child{border-bottom:none}
 .dot{width:8px;height:8px;border-radius:50%;margin-top:5px;flex-shrink:0}
-.d-oil{background:var(--green)}.d-repair{background:var(--red)}.d-km{background:var(--blue)}
+.d-oil{background:var(--green)}.d-repair{background:var(--red)}.d-km{background:var(--blue)}.d-compra{background:var(--accent)}
+/* Pendientes de pago: la casilla es la accion, la fila entera es el area de clic. */
+.pay-row{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:11px 0;border-bottom:0.5px solid var(--border);cursor:pointer}
+.pay-row:last-of-type{border-bottom:none}
+.pay-row:hover{background:var(--bg2)}
+.pay-row input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);cursor:pointer;margin:0}
+.pay-row .amt{font-size:13px;font-weight:600;white-space:nowrap;display:block;margin-bottom:3px}
 .li-title{font-size:13px;font-weight:500;margin-bottom:2px;color:var(--text)}
 .li-meta{font-size:11px;color:var(--text2)}
 .li-cost{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap}
@@ -59,7 +65,7 @@
 .bar-lbl{display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px;color:var(--text)}
 .bar-track{height:6px;background:var(--bg2);border-radius:99px;overflow:hidden}
 .bar-fill{height:100%;border-radius:99px}
-.rpt-filters{display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:10px;align-items:end;margin-bottom:1.25rem}
+.rpt-filters{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;align-items:end;margin-bottom:1.25rem}
 @media(max-width:680px){.rpt-filters{grid-template-columns:1fr 1fr}}
 .rpt-kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:1rem}
 @media(max-width:680px){.rpt-kpi-row{grid-template-columns:repeat(2,1fr)}}
@@ -320,7 +326,7 @@ let ST = {
   modal:null, logFilter:'all', tirePrePos:null, tirePreEvent:null,
   loginErr:'', saving:false,
   adminFilter:'all', buses:[], logs:[], toast:null, toastType:null, modalErr:'',
-  view:'fleet', rptBus:'all', rptType:'all', rptFrom:'', rptTo:'',
+  view:'fleet', rptBus:'all', rptType:'all', rptOrigen:'all', rptPago:'all', rptFrom:'', rptTo:'',
   fleetQuery:'', fleetChip:'atencion',
   clView:'history', svcErrType:null, selService:null,
   clPrevPins:[], clPins:[], clPinDraft:null,   // diagrama de golpes en el checklist
@@ -396,6 +402,13 @@ async function dbUpdateBusKm(id, km){
 async function dbSaveLog(log){
   if(!sb) return {error:'Sin conexión'};
   const {error}=await sb.from('service_logs').insert(log);
+  return {error};
+}
+// upsert y no insert: el espejo de una orden pagada tiene id derivado del id de
+// la orden, y si otro admin ya la marcó pagada la fila ya existe.
+async function dbUpsertLog(log){
+  if(!sb) return {error:'Sin conexión'};
+  const {error}=await sb.from('service_logs').upsert(log);
   return {error};
 }
 async function dbDeleteLog(id){
@@ -671,14 +684,67 @@ function clReadReps(){
   return Array.from(document.querySelectorAll('#cl-reps .cl-rep-input')).map(i=>i.value.trim()).filter(Boolean);
 }
 
-function applyReportFilters(){
+// ─── REPORTE GENERAL (MIXTO) ─────────────────────────────────────────────────
+// Son dos reportes distintos a propósito:
+//   /reportes  = bitácora (service_logs) + órdenes de compra  -> gasto real por unidad
+//   /compras   = solo órdenes de compra                       -> control de pagos
+// Al marcarse pagada, una orden deja un espejo en la bitácora (type 'compra')
+// para que aparezca en el historial de la unidad. Aquí ese espejo se omite y se
+// muestra la orden: si no, el mismo gasto se contaría dos veces.
+const REPORT_TYPE_LABELS = {...LOG_TYPES, tire:'Llanta', checklist:'Checklist'};
+const REPORT_TYPE_COLORS = {svc:'var(--green)', svc_trans:'var(--green)', svc_diff:'var(--green)',
+  oil:'var(--green)', repair:'var(--red)', km:'var(--blue)', tire:'var(--amber)', checklist:'var(--blue)'};
+function esLogDeOrden(l){ return l.type==='compra'; }
+// Una orden cuenta como "por pagar" mientras no esté pagada ni rechazada.
+function ocPorPagar(status){ return status!=='pagada' && status!=='rechazada'; }
+
+function reportRowsAll(){
   const allowed=new Set(cityBuses().map(b=>b.id));
-  let rows=ST.logs.filter(l=>allowed.has(l.bus_id||l.busId));
-  if(ST.rptBus!=='all') rows=rows.filter(l=>(l.bus_id||l.busId)===ST.rptBus);
-  if(ST.rptType!=='all') rows=rows.filter(l=>l.type===ST.rptType);
-  if(ST.rptFrom) rows=rows.filter(l=>l.date>=ST.rptFrom);
-  if(ST.rptTo)   rows=rows.filter(l=>l.date<=ST.rptTo);
-  return rows.sort((a,b)=>b.date.localeCompare(a.date)||(b.ts||0)-(a.ts||0));
+  const rows=[];
+  ST.logs.forEach(l=>{
+    const busId=l.bus_id||l.busId;
+    if(!allowed.has(busId) || esLogDeOrden(l)) return;
+    rows.push({
+      origen:'bitacora', id:l.id, busId, date:l.date,
+      tipoKey:l.type, tipo:REPORT_TYPE_LABELS[l.type]||l.type,
+      color:REPORT_TYPE_COLORS[l.type]||'var(--text3)',
+      subtipo:getSubtipo(l), descripcion:l.description||l.desc||'',
+      km:l.km_after||l.kmAfter||0, quien:l.technician||l.tech||'',
+      costo:Number(l.cost||0), pago:null, ts:l.ts||0
+    });
+  });
+  ST.ordenes.forEach(o=>{
+    if(!allowed.has(o.bus_id)) return;
+    rows.push({
+      origen:'compra', id:o.id, busId:o.bus_id, date:(o.created_at||'').slice(0,10),
+      tipoKey:o.tipo_servicio, tipo:'Orden de compra', color:'var(--accent)',
+      subtipo:o.folio, descripcion:`${o.tipo_servicio} · ${o.concepto}`,
+      km:0, quien:o.proveedor||'',
+      costo:Number(o.monto||0), pago:o.status, ts:Date.parse(o.created_at)||0
+    });
+  });
+  return rows;
+}
+function applyReportFilters(){
+  let rows=reportRowsAll();
+  if(ST.rptBus!=='all')    rows=rows.filter(r=>r.busId===ST.rptBus);
+  if(ST.rptOrigen!=='all') rows=rows.filter(r=>r.origen===ST.rptOrigen);
+  if(ST.rptType!=='all'){
+    // El valor va prefijado (log:repair / oc:Llantas) porque la lista mezcla los
+    // tipos de la bitácora con los tipos de servicio de las órdenes.
+    const i=ST.rptType.indexOf(':');
+    const scope=ST.rptType.slice(0,i), key=ST.rptType.slice(i+1);
+    rows=rows.filter(r=>r.origen===(scope==='oc'?'compra':'bitacora') && r.tipoKey===key);
+  }
+  if(ST.rptPago==='sinpagar')      rows=rows.filter(r=>r.origen==='compra' && ocPorPagar(r.pago));
+  else if(ST.rptPago!=='all')      rows=rows.filter(r=>r.pago===ST.rptPago);
+  if(ST.rptFrom) rows=rows.filter(r=>r.date>=ST.rptFrom);
+  if(ST.rptTo)   rows=rows.filter(r=>r.date<=ST.rptTo);
+  return rows.sort((a,b)=>b.date.localeCompare(a.date)||b.ts-a.ts);
+}
+function resetReportFilters(){
+  ST.rptBus='all'; ST.rptType='all'; ST.rptOrigen='all'; ST.rptPago='all';
+  ST.rptFrom=''; ST.rptTo=''; render();
 }
 
 // ─── RENDER ──────────────────────────────────────────────────────────────────
@@ -987,6 +1053,33 @@ function renderMantenimiento(bus){
   h+=renderTiresBlock(bus);
   h+=`<div class="grouphead" style="padding-left:2px">Reparaciones</div>`;
   h+=renderRepairs(bus);
+  // Montos de compras: mismo criterio de rol que el resto del taller.
+  if(ST.role==='admin'){
+    h+=`<div class="grouphead" style="padding-left:2px">Órdenes de compra pagadas</div>`;
+    h+=renderComprasBus(bus);
+  }
+  return h;
+}
+// Historial de compras de la unidad: son los espejos que deja una orden al
+// marcarse pagada en el taller (type 'compra'), no captura manual.
+function renderComprasBus(bus){
+  const compras=busLogs(bus.id).filter(l=>l.type==='compra');
+  if(!compras.length){
+    return `<div class="rcard"><div class="empty"><p style="margin:0;color:var(--text2)">Sin órdenes de compra pagadas. Aparecen aquí al marcarlas pagadas en Taller.</p></div></div>`;
+  }
+  const total=compras.reduce((s,l)=>s+Number(l.cost||0),0);
+  let h=`<div class="card">`;
+  compras.forEach(l=>{
+    h+=`<div class="log-item">
+      <div class="dot d-compra"></div>
+      <div>
+        <div class="li-title">${escHtml(l.description||'Orden de compra')}</div>
+        <div class="li-meta">Pagada ${l.date}${l.technician?' &nbsp;·&nbsp; '+escHtml(l.technician):''}${l.km_after?' &nbsp;·&nbsp; '+fmt(l.km_after)+' km':''}</div>
+      </div>
+      <span class="li-cost">${mxn(l.cost||0)}</span>
+    </div>`;
+  });
+  h+=`</div><div class="rcard"><div class="kv"><span>Gasto en compras</span><b>${mxn(total)}</b></div></div>`;
   return h;
 }
 // Llantas: en móvil lista de posiciones con valor+color; diagrama solo en escritorio.
@@ -1241,15 +1334,15 @@ function renderReport(){
   const isAdmin=ST.role==='admin';
   const buses=cityBuses().slice().sort((a,b)=>a.name.localeCompare(b.name));
   const rows=applyReportFilters();
-  const totalCost=rows.reduce((s,l)=>s+(l.cost||0),0);
-  const uniqBuses=new Set(rows.map(l=>l.bus_id||l.busId)).size;
-  const typeColors={oil:'var(--green)',repair:'var(--red)',km:'var(--blue)',tire:'var(--amber)'};
-  const typeLabels={...LOG_TYPES,tire:'Llanta'};
-  const hasFilters=ST.rptBus!=='all'||ST.rptType!=='all'||ST.rptFrom||ST.rptTo;
+  const totalCost=rows.reduce((s,r)=>s+r.costo,0);
+  const porPagar=rows.filter(r=>r.origen==='compra'&&ocPorPagar(r.pago));
+  const totalPorPagar=porPagar.reduce((s,r)=>s+r.costo,0);
+  const uniqBuses=new Set(rows.map(r=>r.busId)).size;
+  const hasFilters=ST.rptBus!=='all'||ST.rptType!=='all'||ST.rptOrigen!=='all'||ST.rptPago!=='all'||ST.rptFrom||ST.rptTo;
 
   let h=`<div class="card">
     <div class="section-hdr" style="margin-bottom:1rem"><h4>Filtros</h4>
-      ${hasFilters?`<button class="btn sm ghost" onclick="ST.rptBus='all';ST.rptType='all';ST.rptFrom='';ST.rptTo='';render()">Limpiar filtros</button>`:''}
+      ${hasFilters?`<button class="btn sm ghost" onclick="resetReportFilters()">Limpiar filtros</button>`:''}
     </div>
     <div class="rpt-filters">
       <div class="form-row" style="margin:0"><label>Unidad</label>
@@ -1257,23 +1350,40 @@ function renderReport(){
           <option value="all">Todas las unidades</option>
           ${buses.map(b=>`<option value="${b.id}"${ST.rptBus===b.id?' selected':''}>${b.name}</option>`).join('')}
         </select></div>
-      <div class="form-row" style="margin:0"><label>Tipo de servicio</label>
+      <div class="form-row" style="margin:0"><label>Origen</label>
+        <select onchange="ST.rptOrigen=this.value;render()">
+          <option value="all">Bitácora + compras</option>
+          <option value="bitacora"${ST.rptOrigen==='bitacora'?' selected':''}>Solo bitácora</option>
+          <option value="compra"${ST.rptOrigen==='compra'?' selected':''}>Solo órdenes de compra</option>
+        </select></div>
+      <div class="form-row" style="margin:0"><label>Tipo</label>
         <select onchange="ST.rptType=this.value;render()">
           <option value="all">Todos los tipos</option>
-          ${Object.entries(typeLabels).map(([k,v])=>`<option value="${k}"${ST.rptType===k?' selected':''}>${v}</option>`).join('')}
+          <optgroup label="Bitácora">
+            ${Object.entries(REPORT_TYPE_LABELS).map(([k,v])=>`<option value="log:${k}"${ST.rptType==='log:'+k?' selected':''}>${v}</option>`).join('')}
+          </optgroup>
+          <optgroup label="Órdenes de compra">
+            ${OC_TIPOS_SERVICIO.map(t=>`<option value="oc:${t}"${ST.rptType==='oc:'+t?' selected':''}>${t}</option>`).join('')}
+          </optgroup>
+        </select></div>
+      <div class="form-row" style="margin:0"><label>Pago</label>
+        <select onchange="ST.rptPago=this.value;render()">
+          <option value="all">Todos</option>
+          <option value="sinpagar"${ST.rptPago==='sinpagar'?' selected':''}>Pendientes de pago</option>
+          ${Object.entries(OC_STATUS_LABELS).map(([k,v])=>`<option value="${k}"${ST.rptPago===k?' selected':''}>${v}</option>`).join('')}
         </select></div>
       <div class="form-row" style="margin:0"><label>Desde</label>
         <input type="date" value="${ST.rptFrom}" onchange="ST.rptFrom=this.value;render()"></div>
       <div class="form-row" style="margin:0"><label>Hasta</label>
         <input type="date" value="${ST.rptTo}" onchange="ST.rptTo=this.value;render()"></div>
-      <div><button class="btn" style="width:100%" onclick="ST.rptBus='all';ST.rptType='all';ST.rptFrom='';ST.rptTo='';render()">↺</button></div>
+      <div><button class="btn" style="width:100%" onclick="resetReportFilters()">↺</button></div>
     </div>
   </div>`;
 
   h+=`<div class="rpt-kpi-row" style="grid-template-columns:repeat(${isAdmin?4:2},1fr)">
     <div class="kpi"><div class="kl">Registros</div><div class="kv">${rows.length}</div><div class="ks">en filtro actual</div></div>
-    ${isAdmin?`<div class="kpi"><div class="kl">Gasto total</div><div class="kv">${mxn(totalCost)}</div><div class="ks">filtrado</div></div>`:''}
-    ${isAdmin?`<div class="kpi"><div class="kl">Promedio por registro</div><div class="kv">${rows.length?mxn(Math.round(totalCost/rows.length)):'—'}</div><div class="ks">con costo</div></div>`:''}
+    ${isAdmin?`<div class="kpi"><div class="kl">Gasto total</div><div class="kv">${mxn(totalCost)}</div><div class="ks">bitácora + compras</div></div>`:''}
+    ${isAdmin?`<div class="kpi"><div class="kl">Pendiente por pagar</div><div class="kv${totalPorPagar?' alert':''}">${mxn(totalPorPagar)}</div><div class="ks">${porPagar.length} orden(es) sin pagar</div></div>`:''}
     <div class="kpi"><div class="kl">Unidades</div><div class="kv">${uniqBuses}</div><div class="ks">distintas en resultados</div></div>
   </div>`;
 
@@ -1288,25 +1398,26 @@ function renderReport(){
         <th style="padding-left:1.25rem">Fecha</th>
         <th>Unidad</th>
         <th>Tipo</th>
-        <th>Subtipo</th>
+        <th>Folio / Subtipo</th>
         <th>Descripción</th>
         <th style="text-align:right">KM</th>
-        <th>Técnico</th>
+        <th>Proveedor / Técnico</th>
+        <th>Pago</th>
         ${isAdmin?`<th style="text-align:right;padding-right:1.25rem">Costo</th>`:''}
       </tr></thead>
       <tbody>`;
-  rows.forEach(l=>{
-    const bus=ST.buses.find(b=>b.id===(l.bus_id||l.busId));
-    const km=l.km_after||l.kmAfter;
+  rows.forEach(r=>{
+    const bus=ST.buses.find(b=>b.id===r.busId);
     h+=`<tr>
-      <td style="padding-left:1.25rem;white-space:nowrap;color:var(--text2)">${l.date}</td>
+      <td style="padding-left:1.25rem;white-space:nowrap;color:var(--text2)">${r.date}</td>
       <td style="font-weight:500;white-space:nowrap">${bus?.name||'—'}</td>
-      <td><span style="display:inline-flex;align-items:center;gap:5px"><span style="width:7px;height:7px;border-radius:50%;background:${typeColors[l.type]||'var(--text3)'};flex-shrink:0;display:inline-block"></span>${typeLabels[l.type]||l.type}</span></td>
-      <td style="color:var(--text2);white-space:nowrap">${getSubtipo(l)}</td>
-      <td style="color:var(--text2);max-width:200px">${l.description||l.desc||'—'}</td>
-      <td style="text-align:right;color:var(--text2);white-space:nowrap">${km?fmt(km)+' km':'—'}</td>
-      <td style="color:var(--text2)">${l.technician||l.tech||'—'}</td>
-      ${isAdmin?`<td style="text-align:right;font-weight:${l.cost?600:400};padding-right:1.25rem;white-space:nowrap;color:${l.cost?'var(--text)':'var(--text3)'}">${l.cost?mxn(l.cost):'—'}</td>`:''}
+      <td><span style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap"><span style="width:7px;height:7px;border-radius:50%;background:${r.color};flex-shrink:0;display:inline-block"></span>${escHtml(r.tipo)}</span></td>
+      <td style="color:var(--text2);white-space:nowrap">${escHtml(r.subtipo||'—')}</td>
+      <td style="color:var(--text2);max-width:240px">${escHtml(r.descripcion||'—')}</td>
+      <td style="text-align:right;color:var(--text2);white-space:nowrap">${r.km?fmt(r.km)+' km':'—'}</td>
+      <td style="color:var(--text2)">${escHtml(r.quien||'—')}</td>
+      <td style="white-space:nowrap">${r.pago?`<span class="pill ${OC_STATUS_PILL[r.pago]||'pill-mid'}">${OC_STATUS_LABELS[r.pago]||r.pago}</span>`:'<span style="color:var(--text3)">—</span>'}</td>
+      ${isAdmin?`<td style="text-align:right;font-weight:${r.costo?600:400};padding-right:1.25rem;white-space:nowrap;color:${r.costo?'var(--text)':'var(--text3)'}">${r.costo?mxn(r.costo):'—'}</td>`:''}
     </tr>`;
   });
   h+=`</tbody></table></div>
@@ -1703,14 +1814,86 @@ function applyComprasFilters(){
   if(ST.pcTo)   rows=rows.filter(o=>o.created_at.slice(0,10)<=ST.pcTo);
   return rows.sort((a,b)=>b.created_at.localeCompare(a.created_at));
 }
+// El espejo de la orden en la bitácora lleva un id derivado del id de la orden
+// (po-<uuid>). Eso lo hace idempotente: marcarla pagada dos veces no duplica el
+// registro, y quitarle el "pagada" lo borra.
+function ordenLogId(o){ return 'po-'+o.id; }
+function ordenLogRow(o,bus){
+  return {
+    id:ordenLogId(o), bus_id:o.bus_id, city:bus.city, type:'compra',
+    date:today(),   // fecha de PAGO, no de captura de la orden
+    description:`${o.folio} · ${o.tipo_servicio} · ${o.concepto}`,
+    cost:Number(o.monto||0), technician:o.proveedor||null,
+    km_after:bus.km||null, ts:Date.now()
+  };
+}
+async function syncOrdenBitacora(o){
+  const logId=ordenLogId(o);
+  const existente=ST.logs.find(l=>l.id===logId);
+  if(o.status==='pagada'){
+    if(existente) return {error:null};
+    const bus=ST.buses.find(b=>b.id===o.bus_id);
+    if(!bus) return {error:'no se encontró la unidad'};
+    const log=ordenLogRow(o,bus);
+    ST.logs.unshift(log);
+    const {error}=await dbUpsertLog(log);
+    if(error){ ST.logs=ST.logs.filter(l=>l.id!==logId); return {error:error.message||error}; }
+    return {error:null};
+  }
+  if(!existente) return {error:null};
+  ST.logs=ST.logs.filter(l=>l.id!==logId);
+  const {error}=await dbDeleteLog(logId);
+  if(error){ ST.logs.unshift(existente); return {error:error.message||error}; }
+  return {error:null};
+}
 async function doChangeOrdenStatus(id,status){
   const o=ST.ordenes.find(x=>x.id===id);
   if(!o||o.status===status) return;
   const prev=o.status;
   o.status=status; render();
   const {error}=await dbUpdateOrdenStatus(id,status);
-  if(error){ o.status=prev; showToast('Error al actualizar. Intenta de nuevo.','error'); render(); }
+  if(error){ o.status=prev; showToast('Error al actualizar. Intenta de nuevo.','error'); render(); return; }
+  const {error:logErr}=await syncOrdenBitacora(o);
+  render();
+  if(logErr) showToast('Status actualizado, pero la bitácora falló: '+logErr,'error');
+  else if(status==='pagada') showToast('Pagada · agregada a la bitácora de la unidad');
   else showToast('Status actualizado');
+}
+// Panel de acción del taller: lo que falta pagar. Marcar la casilla paga la
+// orden y la manda a la bitácora de la unidad (ver syncOrdenBitacora).
+function renderPendientesPago(){
+  if(ST.role!=='admin') return '';
+  const allowed=new Set(cityBuses().map(b=>b.id));
+  // Las más viejas primero: son las que llevan más tiempo esperando.
+  const pend=ST.ordenes.filter(o=>allowed.has(o.bus_id)&&ocPorPagar(o.status))
+    .sort((a,b)=>String(a.created_at).localeCompare(String(b.created_at)));
+  if(!pend.length){
+    return `<div class="card"><div class="section-hdr" style="margin-bottom:0">
+      <h4>Pendientes de pago</h4>
+      <span style="font-size:12px;color:var(--text2)">Ninguna · todo pagado</span>
+    </div></div>`;
+  }
+  const total=pend.reduce((s,o)=>s+Number(o.monto||0),0);
+  let h=`<div class="card">
+    <div class="section-hdr"><h4>Pendientes de pago — ${pend.length}</h4>
+      <span style="font-size:14px;font-weight:600">${mxn(total)}</span></div>
+    <p style="font-size:12px;color:var(--text2);line-height:1.45;margin-bottom:0.5rem">
+      Marca la casilla al pagar: la orden pasa a <b>Pagada</b> y se agrega a la bitácora e historial de la unidad.</p>`;
+  pend.forEach(o=>{
+    const bus=ST.buses.find(b=>b.id===o.bus_id);
+    h+=`<label class="pay-row">
+      <input type="checkbox" onchange="doChangeOrdenStatus('${o.id}','pagada')">
+      <div>
+        <div class="li-title">${escHtml(o.folio)} · ${escHtml(bus?.name||'—')} · ${escHtml(o.proveedor)}</div>
+        <div class="li-meta">${String(o.created_at).slice(0,10)} &nbsp;·&nbsp; ${escHtml(o.tipo_servicio)} &nbsp;·&nbsp; ${escHtml(o.concepto)}</div>
+      </div>
+      <div style="text-align:right">
+        <span class="amt">${mxn(o.monto)}</span>
+        <span class="pill ${OC_STATUS_PILL[o.status]||'pill-mid'}">${OC_STATUS_LABELS[o.status]||o.status}</span>
+      </div>
+    </label>`;
+  });
+  return h+`</div>`;
 }
 function renderComprasHub(){
   const isAdmin=ST.role==='admin';
@@ -1720,7 +1903,8 @@ function renderComprasHub(){
   const uniqBuses=new Set(rows.map(o=>o.bus_id)).size;
   const hasFilters=ST.pcBus!=='all'||ST.pcTipo!=='all'||ST.pcStatus!=='all'||ST.pcFrom||ST.pcTo;
 
-  let h=`<div class="card">
+  let h=renderPendientesPago();
+  h+=`<div class="card">
     <div class="section-hdr" style="margin-bottom:1rem"><h4>Filtros</h4>
       ${hasFilters?`<button class="btn sm ghost" onclick="ST.pcBus='all';ST.pcTipo='all';ST.pcStatus='all';ST.pcFrom='';ST.pcTo='';render()">Limpiar filtros</button>`:''}
     </div>
@@ -2599,30 +2783,32 @@ function exportCSV(){
   const isAdmin=ST.role==='admin';
   const rows=applyReportFilters();
   if(!rows.length) return;
-  const typeLabels={...LOG_TYPES,tire:'Llanta'};
-  const headers=['Fecha','Unidad','Ciudad','Cliente','Tipo','Subtipo','Descripcion','KM','Tecnico'];
+  const q=v=>`"${String(v==null?'':v).replace(/"/g,'""')}"`;
+  const headers=['Fecha','Unidad','Ciudad','Cliente','Origen','Tipo','Folio/Subtipo','Descripcion','KM','Proveedor/Tecnico','Pago'];
   if(isAdmin) headers.push('Costo MXN');
   const lines=[headers.join(',')];
-  rows.forEach(l=>{
-    const bus=ST.buses.find(b=>b.id===(l.bus_id||l.busId));
+  rows.forEach(r=>{
+    const bus=ST.buses.find(b=>b.id===r.busId);
     const cells=[
-      l.date,
-      `"${(bus?.name||'').replace(/"/g,'""')}"`,
+      r.date,
+      q(bus?.name||''),
       CITIES[bus?.city]?.name||bus?.city||'',
-      bus?.client||'',
-      typeLabels[l.type]||l.type,
-      `"${getSubtipo(l).replace(/"/g,'""')}"`,
-      `"${(l.description||l.desc||'').replace(/"/g,'""')}"`,
-      l.km_after||l.kmAfter||'',
-      `"${(l.technician||l.tech||'').replace(/"/g,'""')}"`
+      q(bus?.client||''),
+      r.origen==='compra'?'Orden de compra':'Bitacora',
+      q(r.tipo),
+      q(r.subtipo||''),
+      q(r.descripcion||''),
+      r.km||'',
+      q(r.quien||''),
+      r.pago?(OC_STATUS_LABELS[r.pago]||r.pago):''
     ];
-    if(isAdmin) cells.push(l.cost||0);
+    if(isAdmin) cells.push(r.costo||0);
     lines.push(cells.join(','));
   });
-  const blob=new Blob(['\uFEFF'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
+  const blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
-  a.href=url; a.download=`reporte_ate_${today()}.csv`; a.click();
+  a.href=url; a.download=`reporte_general_ate_${today()}.csv`; a.click();
   URL.revokeObjectURL(url);
 }
 
@@ -2726,6 +2912,7 @@ async function refreshData(force){
   const {error}=await loadFromSupabase();
   if(error){ console.error('Error refrescando datos:', error); return; }
   await loadChequeosData();
+  await loadComprasData();
   if(dataSig()===antes) return;          // nada cambió: no repintar
   const y=window.scrollY;
   render();
@@ -2734,6 +2921,7 @@ async function refreshData(force){
 // Firma barata de lo que se pinta: si no cambia, no vale la pena repintar.
 function dataSig(){
   return ST.logs.length+'|'+ST.chequeos.length+'|'+ST.danos.length+'|'+
+    ST.ordenes.map(o=>o.id+':'+o.status).join(',')+'|'+
     ST.buses.map(b=>b.id+':'+(b.km||0)+':'+((b.open_issues||[]).filter(i=>!i.resolved).length)).join(',');
 }
 document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') refreshData(); });
