@@ -57,6 +57,11 @@ const CITIES = {
   cdmx:'Ciudad de México', vhs:'Villahermosa', admin:'Admin — Todas'
 };
 const TIPOS_SERVICIO = ['Mecánica general','Llantas','Eléctrico','Hojalatería y pintura','Refacciones','Otro'];
+// Sugerencias, no catálogo cerrado: el campo es texto libre (<datalist>) para
+// no bloquear a un proveedor que cobre en un banco que no esté en la lista.
+const BANCOS = ['Santander','BBVA','Banorte','Citibanamex','HSBC','Scotiabank',
+  'Inbursa','Banco Azteca','BanCoppel','Banregio','Afirme','BanBajío','Mifel',
+  'Multiva','Banco del Bienestar','Hey Banco','Nu','Klar','STP'];
 const STATUS_LABELS = {pendiente:'Pendiente', autorizada:'Autorizada', pagada:'Pagada', rechazada:'Rechazada'};
 const STATUS_PILL = {pendiente:'pill-mid', autorizada:'pill-blue', pagada:'pill-good', rechazada:'pill-worn'};
 
@@ -74,11 +79,11 @@ let ST = {
   // filtro por unidad, CSV y el espejo a service_logs al marcar pagada), asi
   // que una sola fila con varias unidades romperia esa atribucion.
   ocBusIds:[], ocBusQuery:'',
-  ocTipo:'', ocConcepto:'', ocProveedor:'', ocCuenta:'', ocMonto:'', ocSolicita:'',
+  ocTipo:'', ocConcepto:'', ocProveedor:'', ocCuenta:'', ocBanco:'', ocMonto:'', ocSolicita:'',
   ocErr:'', ocLastOrders:null,
 
   // Memoria de proveedores: se deriva de purchase_orders, no hay tabla nueva.
-  proveedores:[], ocProvMatches:[], ocProvKnown:null, ocCuentaAuto:false
+  proveedores:[], ocProvMatches:[], ocProvKnown:null, ocCuentaAuto:false, ocBancoAuto:false
 };
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
@@ -105,9 +110,9 @@ async function init(){
 async function loadData(){
   const [r1,r2]=await Promise.all([
     sb.from('buses').select('*'),
-    // Solo para la memoria de proveedores: nombre + ultima cuenta usada.
+    // Solo para la memoria de proveedores: nombre + ultima cuenta y banco.
     sb.from('purchase_orders')
-      .select('proveedor,cuenta_referencia,bus_id,created_at')
+      .select('proveedor,cuenta_referencia,banco,bus_id,created_at')
       .order('created_at',{ascending:false}).limit(1000),
   ]);
   if(r1.error) return {error:r1.error.message};
@@ -142,8 +147,8 @@ function fmtDateTime(iso){ return new Date(iso).toLocaleString('es-MX',{dateStyl
 
 // ─── MEMORIA DE PROVEEDORES ──────────────────────────────────────────────────
 // No hay tabla de proveedores: la fuente de verdad son las ordenes ya
-// capturadas. De cada proveedor distinto guardamos su cuenta/referencia mas
-// reciente y cuantas ordenes lleva. Los proveedores usados en las ciudades del
+// capturadas. De cada proveedor distinto guardamos su cuenta/referencia y su
+// banco mas recientes, y cuantas ordenes lleva. Los proveedores usados en las ciudades del
 // usuario van primero — un taller de Tijuana no le sirve a quien captura en
 // Cancun.
 function ocNorm(s){
@@ -158,9 +163,11 @@ function buildProveedores(rows){
     const key=ocNorm(nombre);
     if(!key) return;
     let p=map.get(key);
-    if(!p){ p={key, nombre, cuenta:null, n:0, ultima:o.created_at, mia:false}; map.set(key,p); }
+    if(!p){ p={key, nombre, cuenta:null, banco:null, n:0, ultima:o.created_at, mia:false}; map.set(key,p); }
     p.n++;
+    // rows viene en desc, asi que el primer valor no vacio es el mas reciente.
     if(!p.cuenta && (o.cuenta_referencia||'').trim()) p.cuenta=o.cuenta_referencia.trim();
+    if(!p.banco && (o.banco||'').trim()) p.banco=o.banco.trim();
     if(myBuses.has(o.bus_id)) p.mia=true;
   });
   ST.proveedores=[...map.values()].sort((a,b)=>
@@ -185,9 +192,10 @@ function ocRememberProveedor(o){
   const key=ocNorm(nombre);
   if(!key) return;
   const cuenta=(o.cuenta_referencia||'').trim()||null;
+  const banco=(o.banco||'').trim()||null;
   const p=ST.proveedores.find(x=>x.key===key);
-  if(p){ p.n++; p.nombre=nombre; p.mia=true; p.ultima=o.created_at; if(cuenta) p.cuenta=cuenta; }
-  else ST.proveedores.unshift({key, nombre, cuenta, n:1, ultima:o.created_at, mia:true});
+  if(p){ p.n++; p.nombre=nombre; p.mia=true; p.ultima=o.created_at; if(cuenta) p.cuenta=cuenta; if(banco) p.banco=banco; }
+  else ST.proveedores.unshift({key, nombre, cuenta, banco, n:1, ultima:o.created_at, mia:true});
 }
 
 // El input NO llama a render(): un render() completo reconstruiria el <input> y
@@ -198,9 +206,15 @@ function ocProveedorInput(text){
   const exact=ocFindProveedor(text);
   ST.ocProvKnown=exact;
   ST.ocProvMatches=exact?[]:ocMatchProveedores(text);
-  if(exact&&exact.cuenta) ocFillCuenta(exact);
-  else if(ST.ocCuentaAuto) ocClearCuenta();
+  ocApplyProvDatos(exact);
   ocRefreshProvUI();
+}
+// Cuenta y banco se autocompletan igual: si el proveedor es conocido se
+// rellenan desde su ultima orden; si el usuario cambia de proveedor, lo que
+// habiamos puesto nosotros se limpia, pero lo que el escribio a mano se queda.
+function ocApplyProvDatos(p){
+  if(p&&p.cuenta) ocFillCuenta(p); else if(ST.ocCuentaAuto) ocClearCuenta();
+  if(p&&p.banco) ocFillBanco(p); else if(ST.ocBancoAuto) ocClearBanco();
 }
 function ocPickProveedor(i){
   const p=ST.ocProvMatches[i];
@@ -210,8 +224,7 @@ function ocPickProveedor(i){
   ST.ocProvMatches=[];
   const inp=document.getElementById('oc-proveedor');
   if(inp) inp.value=p.nombre;
-  if(p.cuenta) ocFillCuenta(p);
-  else if(ST.ocCuentaAuto) ocClearCuenta();
+  ocApplyProvDatos(p);
   ocRefreshProvUI();
   if(inp) inp.focus();
 }
@@ -231,26 +244,47 @@ function ocClearCuenta(){
   ocRefreshCuentaUI();
 }
 function ocCuentaInput(text){ ST.ocCuenta=text; ST.ocCuentaAuto=false; ocRefreshCuentaUI(); }
+function ocFillBanco(p){
+  if(!p.banco) return;
+  if((ST.ocBanco||'').trim() && !ST.ocBancoAuto) return;
+  ST.ocBanco=p.banco; ST.ocBancoAuto=true;
+  const inp=document.getElementById('oc-banco');
+  if(inp) inp.value=p.banco;
+  ocRefreshBancoUI();
+}
+function ocClearBanco(){
+  ST.ocBanco=''; ST.ocBancoAuto=false;
+  const inp=document.getElementById('oc-banco');
+  if(inp) inp.value='';
+  ocRefreshBancoUI();
+}
+function ocBancoInput(text){ ST.ocBanco=text; ST.ocBancoAuto=false; ocRefreshBancoUI(); }
 function ocRefreshProvUI(){
   const el=document.getElementById('oc-prov-sugg');
   if(el) el.innerHTML=renderProvSuggInner();
-  ocRefreshCuentaUI();
+  ocRefreshCuentaUI(); ocRefreshBancoUI();
 }
 function ocRefreshCuentaUI(){
   const el=document.getElementById('oc-cuenta-hint');
   if(el) el.innerHTML=renderCuentaHintInner();
 }
+function ocRefreshBancoUI(){
+  const el=document.getElementById('oc-banco-hint');
+  if(el) el.innerHTML=renderBancoHintInner();
+}
 function renderProvSuggInner(){
   const p=ST.ocProvKnown;
   if(p){
     const ordenes=`${p.n} ${p.n===1?'orden previa':'órdenes previas'}`;
-    return `<div class="oc-ok">✓ Proveedor conocido · ${ordenes}${p.cuenta?` · cuenta ${escHtml(p.cuenta)}`:' · sin cuenta registrada'}</div>`;
+    const datos=[p.cuenta?`cuenta ${escHtml(p.cuenta)}`:'sin cuenta registrada',
+                 p.banco?escHtml(p.banco):'sin banco registrado'].join(' · ');
+    return `<div class="oc-ok">✓ Proveedor conocido · ${ordenes} · ${datos}</div>`;
   }
   if(ST.ocProvMatches.length){
     return `<div class="chq-op-sugg oc-prov-sugg">
       ${ST.ocProvMatches.map((m,i)=>`<div class="chq-op-sugg-item" onclick="ocPickProveedor(${i})">
         <div class="oc-sugg-nom">${escHtml(m.nombre)}</div>
-        <div class="oc-sugg-sub">${m.cuenta?`Cuenta ${escHtml(m.cuenta)}`:'Sin cuenta registrada'} · ${m.n} ${m.n===1?'orden':'órdenes'}</div>
+        <div class="oc-sugg-sub">${m.cuenta?`Cuenta ${escHtml(m.cuenta)}`:'Sin cuenta registrada'}${m.banco?` · ${escHtml(m.banco)}`:''} · ${m.n} ${m.n===1?'orden':'órdenes'}</div>
       </div>`).join('')}
     </div>`;
   }
@@ -262,6 +296,12 @@ function renderProvSuggInner(){
 function renderCuentaHintInner(){
   if(ST.ocCuentaAuto && ST.ocProvKnown){
     return `Autocompletada de la última orden de ${escHtml(ST.ocProvKnown.nombre)} · <span class="lnk" onclick="ocClearCuenta()">borrar</span>`;
+  }
+  return '';
+}
+function renderBancoHintInner(){
+  if(ST.ocBancoAuto && ST.ocProvKnown){
+    return `Autocompletado de la última orden de ${escHtml(ST.ocProvKnown.nombre)} · <span class="lnk" onclick="ocClearBanco()">borrar</span>`;
   }
   return '';
 }
@@ -418,9 +458,9 @@ function renderApp(){
 }
 
 function resetForm(){
-  ST.ocBusIds=[]; ST.ocBusQuery=''; ST.ocTipo=''; ST.ocConcepto=''; ST.ocProveedor=''; ST.ocCuenta='';
+  ST.ocBusIds=[]; ST.ocBusQuery=''; ST.ocTipo=''; ST.ocConcepto=''; ST.ocProveedor=''; ST.ocCuenta=''; ST.ocBanco='';
   ST.ocMonto=''; ST.ocSolicita=ST.authEmail||''; ST.ocErr='';
-  ST.ocProvMatches=[]; ST.ocProvKnown=null; ST.ocCuentaAuto=false;
+  ST.ocProvMatches=[]; ST.ocProvKnown=null; ST.ocCuentaAuto=false; ST.ocBancoAuto=false;
 }
 
 function renderForm(){
@@ -450,6 +490,11 @@ function renderForm(){
       <input type="text" id="oc-cuenta" placeholder="Opcional" value="${escHtml(ST.ocCuenta)}" oninput="ocCuentaInput(this.value)">
       <div class="oc-hint" id="oc-cuenta-hint">${renderCuentaHintInner()}</div>
     </div>
+    <div class="form-row"><label>Banco</label>
+      <input type="text" id="oc-banco" list="oc-bancos" placeholder="Santander, BBVA, Banorte…" value="${escHtml(ST.ocBanco)}" oninput="ocBancoInput(this.value)" autocomplete="off">
+      <datalist id="oc-bancos">${BANCOS.map(b=>`<option value="${escHtml(b)}"></option>`).join('')}</datalist>
+      <div class="oc-hint" id="oc-banco-hint">${renderBancoHintInner()}</div>
+    </div>
     <div class="form-row"><label>Monto total (MXN) *</label>
       <input type="number" id="oc-monto" inputmode="decimal" step="0.01" min="0" placeholder="0.00" value="${escHtml(ST.ocMonto)}" oninput="ocMontoInput(this.value)">
       <div class="oc-split" id="oc-split">${renderSplitInner()}</div>
@@ -471,6 +516,7 @@ async function doSaveOrder(){
   const concepto=(document.getElementById('oc-concepto')?.value||'').trim();
   const proveedor=(document.getElementById('oc-proveedor')?.value||'').trim();
   const cuenta=(document.getElementById('oc-cuenta')?.value||'').trim();
+  const banco=(document.getElementById('oc-banco')?.value||'').trim();
   const montoRaw=document.getElementById('oc-monto')?.value||'';
   const solicita=(document.getElementById('oc-solicita')?.value||'').trim();
   const monto=parseFloat(montoRaw);
@@ -490,7 +536,7 @@ async function doSaveOrder(){
   const parts=ocSplit(Math.round(monto*100), chosen.length);
   const orders=chosen.map((b,i)=>({
     bus_id:b.id, tipo_servicio:tipo, concepto, proveedor,
-    cuenta_referencia:cuenta||null, monto:parts[i],
+    cuenta_referencia:cuenta||null, banco:banco||null, monto:parts[i],
     solicita
   }));
   ST.saving=true; render();
@@ -529,6 +575,7 @@ function renderReceipt(){
     <div class="oc-receipt-row"><span class="lbl">${n===1?'Unidad':`Unidades (${n})`}</span><span class="val">${escHtml(orders.map(x=>nombre(x.bus_id)).join(', '))}</span></div>
     <div class="oc-receipt-row"><span class="lbl">Tipo de servicio</span><span class="val">${escHtml(o.tipo_servicio)}</span></div>
     <div class="oc-receipt-row"><span class="lbl">Proveedor</span><span class="val">${escHtml(o.proveedor)}</span></div>
+    ${o.banco?`<div class="oc-receipt-row"><span class="lbl">Banco</span><span class="val">${escHtml(o.banco)}</span></div>`:''}
     ${o.cuenta_referencia?`<div class="oc-receipt-row"><span class="lbl">Cuenta / referencia</span><span class="val">${escHtml(o.cuenta_referencia)}</span></div>`:''}
     <div class="oc-receipt-concepto">${escHtml(o.concepto)}</div>
     ${n>1?`<div class="oc-receipt-split">

@@ -26,3 +26,14 @@ create table purchase_orders (
 -- resto de la app (ver supabase_mini_checkups.sql).
 alter table purchase_orders enable row level security;
 create policy "authenticated full access" on purchase_orders for all to authenticated using (true) with check (true);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 2026-09-23: banco del proveedor.
+-- Aplicado a Supabase. Texto libre con sugerencias en la UI (Santander, BBVA,
+-- Banorte...): la lista de bancos cambia y no justifica un enum ni una tabla
+-- catalogo. Nullable, igual que cuenta_referencia — las ordenes ya capturadas
+-- no lo traen y el campo es opcional.
+-- La pagina lo autocompleta desde el ultimo banco usado con ese proveedor,
+-- misma "memoria de proveedores" que ya alimenta la cuenta/referencia; no hay
+-- tabla de proveedores, la fuente de verdad son las ordenes capturadas.
+alter table purchase_orders add column if not exists banco text;
