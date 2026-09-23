@@ -56,7 +56,11 @@ const CITIES = {
   hgo:'Hidalgo', can:'Cancún', mer:'Mérida', qro:'Querétaro',
   cdmx:'Ciudad de México', vhs:'Villahermosa', admin:'Admin — Todas'
 };
-const TIPOS_SERVICIO = ['Mecánica general','Llantas','Eléctrico','Hojalatería y pintura','Refacciones','Otro'];
+// Debe ser identica a SERVICE_TYPES de index.html (mismas etiquetas y mismo
+// orden): es el vocabulario que comparten ordenes de compra y reparaciones
+// para que al ligarlas cuadre la categoria. No hay JS compartido entre las
+// paginas, asi que este espejo se mantiene a mano.
+const TIPOS_SERVICIO = ['Compresor','Eléctrico','Frenos','Hojalatería y pintura','Llantas','Mangueras/Conexiones','Mecánica general','Motor','Muelles/Amortiguadores','Refacciones','Sistema de enfriamiento','Transmisión','Otro'];
 // Sugerencias, no catálogo cerrado: el campo es texto libre (<datalist>) para
 // no bloquear a un proveedor que cobre en un banco que no esté en la lista.
 const BANCOS = ['Santander','BBVA','Banorte','Citibanamex','HSBC','Scotiabank',

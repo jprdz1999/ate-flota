@@ -246,21 +246,37 @@ const CITIES = {
 };
 
 const CLIENTS = ['Bimbo','Barcel','Oxxo','Maersk','Sensata','Dreams Jade','Bachoco','Otro'];
-const OC_TIPOS_SERVICIO = ['Mecánica general','Llantas','Eléctrico','Hojalatería y pintura','Refacciones','Otro'];
+// Vocabulario UNICO de tipos de servicio: lo comparten la captura de
+// reparaciones y las ordenes de compra, para que una orden ligada a una
+// reparacion caiga en la misma categoria y los reportes que cruzan ambas
+// cuadren. Antes eran dos listas distintas que solo coincidian en "Electrico"
+// y "Otro". Alfabetico, con "Otro" al final a proposito.
+// OJO: no hay archivo JS compartido — si cambias esta lista, actualiza tambien
+// TIPOS_SERVICIO en orden-compra.html.
+const SERVICE_TYPES = [
+  {id:'compresor',    lbl:'Compresor'},
+  {id:'electrico',    lbl:'Eléctrico'},
+  {id:'frenos',       lbl:'Frenos'},
+  {id:'hojalateria',  lbl:'Hojalatería y pintura'},
+  {id:'llantas',      lbl:'Llantas'},
+  {id:'mangueras',    lbl:'Mangueras/Conexiones'},
+  {id:'mecanica',     lbl:'Mecánica general'},
+  {id:'motor',        lbl:'Motor'},
+  {id:'muelles',      lbl:'Muelles/Amortiguadores'},
+  {id:'refacciones',  lbl:'Refacciones'},
+  {id:'enfriamiento', lbl:'Sistema de enfriamiento'},
+  {id:'transmision',  lbl:'Transmisión'},
+  {id:'otro',         lbl:'Otro'},
+];
+// Las reparaciones guardan el id en el <select> y la etiqueta al inicio de
+// service_logs.description; las ordenes de compra guardan la etiqueta en
+// purchase_orders.tipo_servicio. Los ids y etiquetas que ya existian no
+// cambiaron, asi que lo capturado sigue resolviendo.
+const OC_TIPOS_SERVICIO = SERVICE_TYPES.map(t=>t.lbl);
 const OC_STATUS_LABELS = {pendiente:'Pendiente', autorizada:'Autorizada', pagada:'Pagada', rechazada:'Rechazada'};
 const OC_STATUS_PILL = {pendiente:'pill-mid', autorizada:'pill-blue', pagada:'pill-good', rechazada:'pill-worn'};
 const LOG_TYPES = {svc:'Aceite de motor', svc_trans:'Aceite de transmisión', svc_diff:'Aceite diferencial', oil:'Aceite / Preventivo', repair:'Correctivo', km:'Solo KM'};
-const REPAIR_TYPES = [
-  {id:'compresor',   lbl:'Compresor'},
-  {id:'electrico',   lbl:'Eléctrico'},
-  {id:'frenos',      lbl:'Frenos'},
-  {id:'mangueras',   lbl:'Mangueras/Conexiones'},
-  {id:'motor',       lbl:'Motor'},
-  {id:'muelles',     lbl:'Muelles/Amortiguadores'},
-  {id:'enfriamiento',lbl:'Sistema de enfriamiento'},
-  {id:'transmision', lbl:'Transmisión'},
-  {id:'otro',        lbl:'Otro'},
-];
+const REPAIR_TYPES = SERVICE_TYPES;
 const TIRE_EVENTS = {new:'Llanta nueva', rotate:'Rotación', recap:'Reencauche', retire:'Baja'};
 const CL_DOCS=['Licencia de Conducir','Póliza de Seguro','Tarjeta de Circulación','Placas','Extintor','Botiquín médico'];
 const CL_EXTERNO=['Parabrisas delantera','Parabrisas posterior','Limpia parabrisas','Espejos laterales','Libre de modificaciones/adornos'];
