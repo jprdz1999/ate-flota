@@ -648,11 +648,19 @@ function renderReceipt(){
   return h;
 }
 
+// La tarjeta se centra con margin:0 auto; html-to-image copia ese margen
+// calculado al clon y lo desplaza dentro de un lienzo del tamano de la tarjeta,
+// asi que la imagen salia cortada. Se anula el margen y se fija el tamano.
+function receiptImageOpts(node){
+  return {pixelRatio:2, backgroundColor:'#ffffff',
+    width:node.offsetWidth, height:node.offsetHeight,
+    style:{margin:'0'}};
+}
 async function doDownloadImage(){
   const node=document.getElementById('oc-receipt-card');
   if(!node||!window.htmlToImage) return;
   try{
-    const dataUrl=await htmlToImage.toPng(node,{pixelRatio:2,backgroundColor:'#ffffff'});
+    const dataUrl=await htmlToImage.toPng(node,receiptImageOpts(node));
     const a=document.createElement('a');
     a.href=dataUrl; a.download=`${ST.ocLastOrders[0].folio}.png`; a.click();
   }catch(e){ showToast('No se pudo generar la imagen. Toma una captura de pantalla.','error'); }
@@ -661,7 +669,7 @@ async function doCopyImage(){
   const node=document.getElementById('oc-receipt-card');
   if(!node||!window.htmlToImage) return;
   try{
-    const blob=await htmlToImage.toBlob(node,{pixelRatio:2,backgroundColor:'#ffffff'});
+    const blob=await htmlToImage.toBlob(node,receiptImageOpts(node));
     await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
     showToast('Imagen copiada');
   }catch(e){ showToast('No se pudo copiar. Usa Descargar imagen.','error'); }
