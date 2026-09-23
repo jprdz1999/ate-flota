@@ -18,24 +18,10 @@
 .oc-hint:empty{display:none}
 .oc-hint .lnk{color:var(--blue);cursor:pointer;text-decoration:underline}
 .oc-ok{font-size:12px;color:var(--green);margin-top:4px;line-height:1.45}
-.oc-unit-box{border:0.5px solid var(--border);border-radius:var(--radius);margin-top:6px;overflow:hidden}
-.oc-unit-list{max-height:248px;overflow-y:auto}
-.oc-unit-row{display:flex;align-items:center;gap:9px;padding:7px 11px;font-size:13px;cursor:pointer;border-bottom:0.5px solid var(--border)}
-.oc-unit-row:last-child{border-bottom:none}
-.oc-unit-row:hover{background:var(--bg2)}
-.oc-unit-row input{width:16px;height:16px;flex:none;margin:0;accent-color:var(--blue)}
-.oc-unit-nom{font-weight:500;min-width:72px}
-.oc-unit-sub{color:var(--text2);font-size:11px;flex:1;text-align:right}
-.oc-unit-none{padding:12px;font-size:12px;color:var(--text2);text-align:center}
-.oc-unit-bar{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;padding:6px 11px;border-top:0.5px solid var(--border);background:var(--bg2);font-size:12px;color:var(--text2)}
-.oc-unit-bar .lnk{color:var(--blue);cursor:pointer;text-decoration:underline;white-space:nowrap}
-.oc-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
-.oc-chips:empty{display:none}
-.oc-chip{display:inline-flex;align-items:center;gap:6px;background:var(--blue-bg);color:var(--blue-dark);border-radius:99px;padding:3px 9px;font-size:12px;font-weight:600}
-.oc-chip .x{cursor:pointer;opacity:0.6;font-weight:700}
-.oc-chip .x:hover{opacity:1}
-.oc-split{font-size:12px;color:var(--text2);margin-top:4px;line-height:1.45}
-.oc-split:empty{display:none}
+.oc-dest{display:flex;gap:8px;margin-top:2px}
+.oc-dest-btn{flex:1;padding:9px 12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text2);font-weight:500;font-size:13px;cursor:pointer}
+.oc-dest-btn:hover{background:var(--bg2)}
+.oc-dest-btn.on{border-color:var(--blue);background:var(--blue-bg);color:var(--blue-dark);font-weight:600}
 .oc-receipt-split{margin:10px 0;border:1px solid #f0f0f0;border-radius:8px;overflow:hidden}
 .oc-receipt-split .hd{font-size:10px;color:#999;text-transform:uppercase;letter-spacing:0.06em;padding:7px 11px;background:#f7f7f5}
 .oc-receipt-split .it{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:12px;padding:6px 11px;border-top:1px solid #f0f0f0}
@@ -82,6 +68,10 @@ let ST = {
   // renglon por unidad: el Taller reportea gasto POR unidad (columna Unidad,
   // filtro por unidad, CSV y el espejo a service_logs al marcar pagada), asi
   // que una sola fila con varias unidades romperia esa atribucion.
+  // 'unidades' = la compra es para unidades concretas; 'stock' = todavia no se
+  // sabe a que unidad va, se captura contra una ciudad y se asigna despues en
+  // el Taller. Sin ciudad el RLS no podria ubicar la fila y quedaria invisible.
+  ocDestino:'unidades', ocCity:'',
   ocBusIds:[], ocBusQuery:'',
   ocTipo:'', ocConcepto:'', ocProveedor:'', ocCuenta:'', ocBanco:'', ocMonto:'', ocSolicita:'',
   ocErr:'', ocLastOrders:null,
@@ -322,6 +312,21 @@ function ocVisibleBuses(){
   return all.filter(b=>ocNorm(b.name).includes(q)||ocNorm(b.client).includes(q));
 }
 function ocBusQueryInput(text){ ST.ocBusQuery=text; ocRefreshUnitList(); }
+// Las ciudades que el usuario puede capturar. Quien tiene una sola la trae ya
+// elegida; 'admin' no es una ciudad real, se excluye.
+function ocCityOptions(){
+  const mias=authCities();
+  return Object.keys(CITIES).filter(c=>c!=='admin'&&(!mias||mias.includes(c)));
+}
+function ocSetDestino(d){
+  ST.ocDestino=d;
+  if(d==='stock'){
+    const opts=ocCityOptions();
+    if(!ST.ocCity&&opts.length===1) ST.ocCity=opts[0];
+  }
+  ST.ocErr='';
+  render();
+}
 function ocToggleBus(id,on){
   const i=ST.ocBusIds.indexOf(id);
   if(on&&i<0) ST.ocBusIds.push(id);
@@ -394,6 +399,7 @@ function ocRefreshSplit(){
   if(el) el.innerHTML=renderSplitInner();
 }
 function renderSplitInner(){
+  if(ST.ocDestino==='stock') return '';
   const n=ST.ocBusIds.length;
   const total=parseFloat(ST.ocMonto);
   if(n<2||!isFinite(total)||total<=0) return '';
@@ -462,6 +468,7 @@ function renderApp(){
 }
 
 function resetForm(){
+  ST.ocDestino='unidades'; ST.ocCity='';
   ST.ocBusIds=[]; ST.ocBusQuery=''; ST.ocTipo=''; ST.ocConcepto=''; ST.ocProveedor=''; ST.ocCuenta=''; ST.ocBanco='';
   ST.ocMonto=''; ST.ocSolicita=ST.authEmail||''; ST.ocErr='';
   ST.ocProvMatches=[]; ST.ocProvKnown=null; ST.ocCuentaAuto=false; ST.ocBancoAuto=false;
@@ -469,6 +476,20 @@ function resetForm(){
 
 function renderForm(){
   return `<div class="card">
+    <div class="form-row"><label>¿Para qué es la compra? *</label>
+      <div class="oc-dest">
+        <button type="button" class="oc-dest-btn${ST.ocDestino==='unidades'?' on':''}" onclick="ocSetDestino('unidades')">Para unidades</button>
+        <button type="button" class="oc-dest-btn${ST.ocDestino==='stock'?' on':''}" onclick="ocSetDestino('stock')">Para stock</button>
+      </div>
+    </div>
+    ${ST.ocDestino==='stock'?`
+    <div class="form-row"><label>Ciudad *</label>
+      <select id="oc-city" onchange="ST.ocCity=this.value">
+        <option value="">— Selecciona ciudad —</option>
+        ${ocCityOptions().map(c=>`<option value="${c}"${ST.ocCity===c?' selected':''}>${escHtml(CITIES[c]||c)}</option>`).join('')}
+      </select>
+      <div class="oc-hint">Se queda pendiente de asignar a unidades en Taller, después de pagarse.</div>
+    </div>`:`
     <div class="form-row"><label>Unidades *</label>
       <input type="text" id="oc-unidad-q" placeholder="Buscar por número o cliente" value="${escHtml(ST.ocBusQuery)}" oninput="ocBusQueryInput(this.value)" autocomplete="off">
       <div class="oc-unit-box">
@@ -476,7 +497,7 @@ function renderForm(){
         <div class="oc-unit-bar" id="oc-unit-bar">${renderUnitBarInner()}</div>
       </div>
       <div class="oc-chips" id="oc-unit-chips">${renderUnitChipsInner()}</div>
-    </div>
+    </div>`}
     <div class="form-row"><label>Tipo de servicio *</label>
       <select id="oc-tipo" onchange="ST.ocTipo=this.value">
         <option value="">— Selecciona tipo —</option>
@@ -525,13 +546,34 @@ async function doSaveOrder(){
   const solicita=(document.getElementById('oc-solicita')?.value||'').trim();
   const monto=parseFloat(montoRaw);
 
-  if(!busIds.length){ ST.ocErr='Selecciona al menos una unidad.'; render(); return; }
+  const esStock=ST.ocDestino==='stock';
+  if(esStock && !ST.ocCity){ ST.ocErr='Selecciona la ciudad de la compra.'; render(); return; }
+  if(!esStock && !busIds.length){ ST.ocErr='Selecciona al menos una unidad.'; render(); return; }
   if(!tipo){ ST.ocErr='Selecciona el tipo de servicio.'; render(); return; }
   if(!concepto){ ST.ocErr='El concepto es obligatorio.'; render(); return; }
   if(!proveedor){ ST.ocErr='El proveedor es obligatorio.'; render(); return; }
   if(!montoRaw||isNaN(monto)||monto<=0){ ST.ocErr='Ingresa un monto válido.'; render(); return; }
   if(!solicita){ ST.ocErr='El campo "Solicita" es obligatorio.'; render(); return; }
   ST.ocErr='';
+
+  // Una compra a stock es un solo renglón sin unidad: el reparto ocurre después,
+  // al asignarla en el Taller.
+  if(esStock){
+    const orders=[{
+      bus_id:null, city:ST.ocCity, stock_estado:'pendiente',
+      tipo_servicio:tipo, concepto, proveedor,
+      cuenta_referencia:cuenta||null, banco:banco||null,
+      monto:Math.round(monto*100)/100, solicita
+    }];
+    ST.saving=true; render();
+    const {data,error}=await dbSaveOrders(orders);
+    ST.saving=false;
+    if(error){ ST.ocErr='Error al guardar. Intenta de nuevo.'; render(); return; }
+    ST.ocLastOrders=data||[];
+    ocRememberProveedor(ST.ocLastOrders[0]);
+    ST.view='receipt'; render();
+    return;
+  }
 
   // Un renglon por unidad, con el total repartido en centavos. El orden de las
   // unidades es el numerico ascendente, no el orden en que se fueron marcando,
@@ -576,7 +618,8 @@ function renderReceipt(){
       <div class="folio">${folioHdr}</div>
       <div class="sub">${fmtDateTime(o.created_at)}</div>
     </div>
-    <div class="oc-receipt-row"><span class="lbl">${n===1?'Unidad':`Unidades (${n})`}</span><span class="val">${escHtml(orders.map(x=>nombre(x.bus_id)).join(', '))}</span></div>
+    ${o.bus_id?`<div class="oc-receipt-row"><span class="lbl">${n===1?'Unidad':`Unidades (${n})`}</span><span class="val">${escHtml(orders.map(x=>nombre(x.bus_id)).join(', '))}</span></div>`
+      :`<div class="oc-receipt-row"><span class="lbl">Destino</span><span class="val">Stock · ${escHtml(CITIES[o.city]||o.city||'—')}</span></div>`}
     <div class="oc-receipt-row"><span class="lbl">Tipo de servicio</span><span class="val">${escHtml(o.tipo_servicio)}</span></div>
     <div class="oc-receipt-row"><span class="lbl">Proveedor</span><span class="val">${escHtml(o.proveedor)}</span></div>
     ${o.banco?`<div class="oc-receipt-row"><span class="lbl">Banco</span><span class="val">${escHtml(o.banco)}</span></div>`:''}
@@ -592,7 +635,9 @@ function renderReceipt(){
     </div>
     <div class="oc-receipt-row"><span class="lbl">Solicita</span><span class="val">${escHtml(o.solicita)}</span></div>
     <div class="oc-receipt-row"><span class="lbl">Status</span><span class="val"><span class="oc-receipt-status ${STATUS_PILL[o.status]||'pill-mid'}">${STATUS_LABELS[o.status]||o.status}</span></span></div>
-    <div class="oc-receipt-ft">Envía esta captura al grupo de WhatsApp para autorización${n>1?`<br>Cada unidad se autoriza por separado en Taller`:''}</div>
+    <div class="oc-receipt-ft">Envía esta captura al grupo de WhatsApp para autorización${
+      !o.bus_id?`<br>Compra a stock · se asigna a unidades en Taller, después de pagarse`
+      :n>1?`<br>Cada unidad se autoriza por separado en Taller`:''}</div>
   </div>`;
 
   h+=`<div class="oc-actions">

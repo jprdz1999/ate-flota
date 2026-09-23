@@ -116,3 +116,25 @@ label{font-size:12px;color:var(--text2);display:block;margin-bottom:4px}
 .oc-receipt-status{display:inline-block;font-size:11px;font-weight:700;padding:3px 11px;border-radius:99px}
 .oc-receipt-ft{text-align:center;font-size:11px;color:#999;margin-top:1rem}
 .oc-actions{display:flex;gap:8px;justify-content:center;margin-top:1.25rem;flex-wrap:wrap}
+
+/* Selector de unidades con casillas: lo usan la captura de orden de compra
+   (orden-compra.html) y la asignacion de una compra a stock (Taller, en
+   index.html). Vive aqui y no en cada pagina para que no se desincronicen. */
+.oc-unit-box{border:0.5px solid var(--border);border-radius:var(--radius);margin-top:6px;overflow:hidden}
+.oc-unit-list{max-height:248px;overflow-y:auto}
+.oc-unit-row{display:flex;align-items:center;gap:9px;padding:7px 11px;font-size:13px;cursor:pointer;border-bottom:0.5px solid var(--border)}
+.oc-unit-row:last-child{border-bottom:none}
+.oc-unit-row:hover{background:var(--bg2)}
+.oc-unit-row input{width:16px;height:16px;flex:none;margin:0;accent-color:var(--blue)}
+.oc-unit-nom{font-weight:500;min-width:72px}
+.oc-unit-sub{color:var(--text2);font-size:11px;flex:1;text-align:right}
+.oc-unit-none{padding:12px;font-size:12px;color:var(--text2);text-align:center}
+.oc-unit-bar{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;padding:6px 11px;border-top:0.5px solid var(--border);background:var(--bg2);font-size:12px;color:var(--text2)}
+.oc-unit-bar .lnk{color:var(--blue);cursor:pointer;text-decoration:underline;white-space:nowrap}
+.oc-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.oc-chips:empty{display:none}
+.oc-chip{display:inline-flex;align-items:center;gap:6px;background:var(--blue-bg);color:var(--blue-dark);border-radius:99px;padding:3px 9px;font-size:12px;font-weight:600}
+.oc-chip .x{cursor:pointer;opacity:0.6;font-weight:700}
+.oc-chip .x:hover{opacity:1}
+.oc-split{font-size:12px;color:var(--text2);margin-top:4px;line-height:1.45}
+.oc-split:empty{display:none}

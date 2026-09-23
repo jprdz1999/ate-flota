@@ -361,7 +361,10 @@ let ST = {
 
   // ─── Órdenes de Compra (solo lectura/reporte — la captura vive en orden-compra.html) ───
   ordenes:[],
-  pcBus:'all', pcTipo:'all', pcStatus:'all', pcFrom:'', pcTo:''
+  pcBus:'all', pcTipo:'all', pcStatus:'all', pcFrom:'', pcTo:'',
+  // Asignacion de una compra a stock: que orden se esta repartiendo, a que
+  // unidades y por cuanto. asigMonto arranca en el saldo completo.
+  asigId:null, asigBusIds:[], asigQuery:'', asigMonto:'', asigErr:'', asigSaving:false
 };
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
@@ -540,6 +543,19 @@ async function dbUpdateOrdenStatus(id,status){
   const {error}=await sb.from('purchase_orders').update({status}).eq('id',id);
   return {error};
 }
+// Solo las columnas tocadas, nunca la fila completa (misma regla que dbUpdateBus).
+async function dbUpdateOrden(id,patch){
+  if(!sb) return {error:'Sin conexión'};
+  const {error}=await sb.from('purchase_orders').update(patch).eq('id',id);
+  return {error};
+}
+// Un solo insert con las N filas: o entran todas o no entra ninguna, para no
+// dejar una asignación a medias si se cae la red.
+async function dbInsertOrdenes(rows){
+  if(!sb) return {data:null,error:'Sin conexión'};
+  const {data,error}=await sb.from('purchase_orders').insert(rows).select();
+  return {data,error};
+}
 
 async function getSignedPhotoUrl(path){
   const cached=ST.chqSignedUrlCache[path];
@@ -558,6 +574,11 @@ function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(
 function today(){ return new Date().toISOString().slice(0,10); }
 function fmt(n){ return Math.round(n).toLocaleString('es-MX'); }
 function mxn(n){ return '$'+Math.round(n).toLocaleString('es-MX'); }
+// mxn() redondea a pesos enteros, que es lo que quiere el resto del Taller.
+// En el reparto de una compra a stock no sirve: esconde la diferencia de un
+// centavo entre las partes y deja leer "$1,333 / $1,333", que parece un error,
+// y redondea saldos que sí tienen centavos. Aquí se muestran completos.
+function mxnC(n){ return '$'+Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function escHtml(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function authCities(){ return ST.auth==='all'?null:ST.auth.split(','); }
 function adminFilterCities(){ return ST.auth==='all'?Object.keys(CITIES).filter(k=>k!=='admin'):ST.auth.split(','); }
@@ -726,6 +747,34 @@ const REPORT_TYPE_COLORS = {svc:'var(--green)', svc_trans:'var(--green)', svc_di
 function esLogDeOrden(l){ return l.type==='compra'; }
 // Una orden cuenta como "por pagar" mientras no esté pagada ni rechazada.
 function ocPorPagar(status){ return status!=='pagada' && status!=='rechazada'; }
+
+// ─── COMPRAS A STOCK ─────────────────────────────────────────────────────────
+// Una compra a stock es una orden sin unidad: se captura contra una ciudad y
+// despues de pagarse queda pendiente de repartirse entre unidades. Por eso la
+// visibilidad no puede resolverse solo por bus_id, como antes: una orden sin
+// unidad se ubica por su ciudad (mismo criterio que el RLS de Supabase).
+function ocEsStock(o){ return !o.bus_id; }
+function ocCityOk(c){ const l=authCities(); return !l || (!!c && l.includes(c)); }
+function ocVisible(o){
+  return ocEsStock(o) ? ocCityOk(o.city) : cityBuses().some(b=>b.id===o.bus_id);
+}
+function ocPorAsignar(o){ return ocEsStock(o) && o.status==='pagada' && o.stock_estado==='pendiente'; }
+// Lo que se pinta en la columna "Unidad": el numero, o de donde salio el gasto
+// cuando todavia no tiene unidad.
+function ocDestino(o){
+  if(!ocEsStock(o)) return ST.buses.find(b=>b.id===o.bus_id)?.name||'—';
+  const ciudad=CITIES[o.city]?.name||o.city||'sin ciudad';
+  // El sufijo explica por que una orden ya repartida aparece en $0: su monto se
+  // fue a los renglones de cada unidad.
+  const cierre={asignada:' · repartida', consumida:' · consumida'}[o.stock_estado]||'';
+  return `Stock · ${ciudad}${cierre}`;
+}
+// Reparte en centavos para que la suma de las partes de exactamente el total;
+// el sobrante del redondeo se carga de a un centavo a las primeras unidades.
+function ocSplit(totalCents,n){
+  const base=Math.floor(totalCents/n), r=totalCents-base*n;
+  return Array.from({length:n},(_,i)=>(base+(i<r?1:0))/100);
+}
 
 function reportRowsAll(){
   const allowed=new Set(cityBuses().map(b=>b.id));
@@ -1834,8 +1883,7 @@ function renderChqOperadorReport(){
 
 // ─── ÓRDENES DE COMPRA: hub de reporte (la captura vive en orden-compra.html) ─
 function applyComprasFilters(){
-  const allowed=new Set(cityBuses().map(b=>b.id));
-  let rows=ST.ordenes.filter(o=>allowed.has(o.bus_id));
+  let rows=ST.ordenes.filter(ocVisible);
   if(ST.pcBus!=='all')    rows=rows.filter(o=>o.bus_id===ST.pcBus);
   if(ST.pcTipo!=='all')   rows=rows.filter(o=>o.tipo_servicio===ST.pcTipo);
   if(ST.pcStatus!=='all') rows=rows.filter(o=>o.status===ST.pcStatus);
@@ -1857,6 +1905,9 @@ function ordenLogRow(o,bus){
   };
 }
 async function syncOrdenBitacora(o){
+  // Una compra a stock todavía no tiene unidad, así que no hay bitácora a la
+  // cual mandarla. El espejo se crea después, al asignarla (ver doAsignarStock).
+  if(ocEsStock(o)) return {error:null};
   const logId=ordenLogId(o);
   const existente=ST.logs.find(l=>l.id===logId);
   if(o.status==='pagada'){
@@ -1904,9 +1955,10 @@ async function doChangeOrdenStatus(id,status){
 // orden y la manda a la bitácora de la unidad (ver syncOrdenBitacora).
 function renderPendientesPago(){
   if(ST.role!=='admin') return '';
-  const allowed=new Set(cityBuses().map(b=>b.id));
   // Las más viejas primero: son las que llevan más tiempo esperando.
-  const pend=ST.ordenes.filter(o=>allowed.has(o.bus_id)&&ocPorPagar(o.status))
+  // Incluye las compras a stock: también hay que pagarlas, solo que su unidad
+  // se decide después.
+  const pend=ST.ordenes.filter(o=>ocVisible(o)&&ocPorPagar(o.status))
     .sort((a,b)=>String(a.created_at).localeCompare(String(b.created_at)));
   if(!pend.length){
     return `<div class="card"><div class="section-hdr" style="margin-bottom:0">
@@ -1923,10 +1975,9 @@ function renderPendientesPago(){
       <b>Anular</b> la deja como Rechazada y no toca la bitácora. Cualquiera de las dos
       se puede revertir después desde el status en la tabla.</p>`;
   pend.forEach(o=>{
-    const bus=ST.buses.find(b=>b.id===o.bus_id);
     h+=`<div class="pay-row">
       <div>
-        <div class="li-title">${escHtml(o.folio)} · ${escHtml(bus?.name||'—')} · ${escHtml(o.proveedor)}</div>
+        <div class="li-title">${escHtml(o.folio)} · ${escHtml(ocDestino(o))} · ${escHtml(o.proveedor)}</div>
         <div class="li-meta">${String(o.created_at).slice(0,10)} &nbsp;·&nbsp; ${escHtml(o.tipo_servicio)} &nbsp;·&nbsp; ${escHtml(o.concepto)}</div>
       </div>
       <div class="pay-amt">
@@ -1941,15 +1992,209 @@ function renderPendientesPago(){
   });
   return h+`</div>`;
 }
+// ─── PENDIENTES DE ASIGNAR (compras a stock ya pagadas) ──────────────────────
+// Lo que se compró sin unidad y ya se pagó vive aquí hasta que se reparte.
+// Asignar crea un renglón por unidad con su parte del monto y baja el saldo;
+// cuando el saldo llega a cero la orden queda 'asignada' y sale del panel.
+// Lo que nunca corresponde a una unidad (granel, consumibles) se cierra con
+// "Consumida sin unidad": sigue contando como gasto, solo que sin unidad.
+function renderPendientesAsignar(){
+  if(ST.role!=='admin') return '';
+  const pend=ST.ordenes.filter(o=>ocVisible(o)&&ocPorAsignar(o))
+    .sort((a,b)=>String(a.created_at).localeCompare(String(b.created_at)));
+  if(!pend.length) return '';
+  const total=pend.reduce((s,o)=>s+Number(o.monto||0),0);
+  let h=`<div class="card">
+    <div class="section-hdr"><h4>Pendientes de asignar — ${pend.length}</h4>
+      <span style="font-size:14px;font-weight:600">${mxnC(total)}</span></div>
+    <p style="font-size:12px;color:var(--text2);line-height:1.45;margin-bottom:0.5rem">
+      Compras a stock ya pagadas, sin unidad todavía. <b>Asignar</b> reparte el monto
+      entre las unidades que elijas y las manda a su bitácora; puedes asignar por partes
+      y el saldo se queda aquí. <b>Consumida sin unidad</b> la cierra sin repartirla.</p>`;
+  pend.forEach(o=>{
+    h+=`<div class="pay-row">
+      <div>
+        <div class="li-title">${escHtml(o.folio)} · ${escHtml(ocDestino(o))} · ${escHtml(o.proveedor)}</div>
+        <div class="li-meta">${String(o.created_at).slice(0,10)} &nbsp;·&nbsp; ${escHtml(o.tipo_servicio)} &nbsp;·&nbsp; ${escHtml(o.concepto)}</div>
+      </div>
+      <div class="pay-amt">
+        <span class="amt">${mxnC(o.monto)}</span>
+        <span class="pill pill-mid">Por asignar</span>
+      </div>
+      <div class="pay-actions">
+        <button class="btn sm ghost" onclick="doConsumirStock('${o.id}')">Consumida sin unidad</button>
+        <button class="btn sm primary" onclick="abrirAsignar('${o.id}')">Asignar</button>
+      </div>
+    </div>`;
+  });
+  h+=`</div>`;
+  return h+renderAsignarModal();
+}
+function abrirAsignar(id){
+  const o=ST.ordenes.find(x=>x.id===id);
+  if(!o) return;
+  ST.asigId=id; ST.asigBusIds=[]; ST.asigQuery='';
+  ST.asigMonto=String(Number(o.monto||0)); ST.asigErr='';
+  render();
+}
+function cerrarAsignar(){ ST.asigId=null; ST.asigBusIds=[]; ST.asigQuery=''; ST.asigErr=''; render(); }
+
+// Ni la búsqueda ni las casillas llaman a render(): reconstruir el <input> le
+// quitaría el foco al usuario y reiniciaría el scroll de la lista.
+function asigVisibles(){
+  const q=String(ST.asigQuery||'').trim().toLowerCase();
+  const all=cityBuses().slice().sort(cmpUnidad);
+  if(!q) return all;
+  return all.filter(b=>String(b.name).toLowerCase().includes(q)||String(b.client||'').toLowerCase().includes(q));
+}
+function asigQueryInput(t){ ST.asigQuery=t; asigRefreshList(); }
+function asigToggle(id,on){
+  const i=ST.asigBusIds.indexOf(id);
+  if(on&&i<0) ST.asigBusIds.push(id);
+  if(!on&&i>=0) ST.asigBusIds.splice(i,1);
+  const cb=document.querySelector('#asig-list input[data-id="'+CSS.escape(id)+'"]');
+  if(cb&&cb.checked!==on) cb.checked=on;
+  asigRefreshResumen();
+}
+function asigClear(){ ST.asigBusIds=[]; asigRefreshList(); }
+function asigMontoInput(v){ ST.asigMonto=v; asigRefreshResumen(); }
+function asigRefreshList(){
+  const el=document.getElementById('asig-list');
+  if(el) el.innerHTML=asigListInner();
+  asigRefreshResumen();
+}
+function asigRefreshResumen(){
+  const el=document.getElementById('asig-resumen');
+  if(el) el.innerHTML=asigResumenInner();
+  const chips=document.getElementById('asig-chips');
+  if(chips) chips.innerHTML=asigChipsInner();
+  const cuenta=document.getElementById('asig-cuenta');
+  if(cuenta) cuenta.textContent=`${ST.asigBusIds.length} seleccionada${ST.asigBusIds.length===1?'':'s'}`;
+}
+function asigSeleccion(){
+  const byId=new Map(ST.buses.map(b=>[b.id,b]));
+  return ST.asigBusIds.map(id=>byId.get(id)).filter(Boolean).sort(cmpUnidad);
+}
+function asigListInner(){
+  const vis=asigVisibles();
+  if(!vis.length) return `<div class="oc-unit-none">Ninguna unidad coincide</div>`;
+  const sel=new Set(ST.asigBusIds);
+  return vis.map(b=>`<label class="oc-unit-row">
+    <input type="checkbox" data-id="${escHtml(b.id)}"${sel.has(b.id)?' checked':''} onchange="asigToggle(this.dataset.id,this.checked)">
+    <span class="oc-unit-nom">${escHtml(b.name)}</span>
+    <span class="oc-unit-sub">${escHtml(b.client||'')}</span>
+  </label>`).join('');
+}
+function asigChipsInner(){
+  return asigSeleccion().map(b=>`<span class="oc-chip">${escHtml(b.name)}<span class="x" data-id="${escHtml(b.id)}" onclick="asigToggle(this.dataset.id,false)">×</span></span>`).join('');
+}
+function asigResumenInner(){
+  const o=ST.ordenes.find(x=>x.id===ST.asigId);
+  if(!o) return '';
+  const saldo=Number(o.monto||0);
+  const n=ST.asigBusIds.length;
+  const monto=parseFloat(ST.asigMonto);
+  if(!n) return `<span style="color:var(--text2)">Elige al menos una unidad.</span>`;
+  if(!isFinite(monto)||monto<=0) return `<span style="color:var(--text2)">Escribe cuánto de esta compra vas a asignar.</span>`;
+  if(monto>saldo+1e-9) return `<span style="color:var(--red-dark)">El monto no puede pasar del saldo de ${mxnC(saldo)}.</span>`;
+  const parts=ocSplit(Math.round(monto*100),n);
+  const max=parts[0], min=parts[parts.length-1];
+  const reparto=(max===min)?`${mxnC(min)} cada una`:`${mxnC(max)} / ${mxnC(min)}`;
+  const cabeza=n===1
+    ? `${mxnC(monto)} a la unidad seleccionada`
+    : `${mxnC(monto)} entre ${n} unidades: ${reparto}`;
+  const resto=Math.round((saldo-monto)*100)/100;
+  return `${cabeza}. ${resto>0?`Quedan ${mxnC(resto)} de saldo por asignar.`:'Con esto se agota el saldo y la orden queda asignada.'}`;
+}
+function renderAsignarModal(){
+  const o=ST.ordenes.find(x=>x.id===ST.asigId);
+  if(!o) return '';
+  const n=ST.asigBusIds.length;
+  return `<div class="modal-wrap"><div class="modal">
+    <h3>Asignar ${escHtml(o.folio)} · saldo ${mxnC(o.monto)}</h3>
+    <p style="font-size:12px;color:var(--text2);line-height:1.45;margin-bottom:1rem">
+      ${escHtml(o.tipo_servicio)} · ${escHtml(o.proveedor)}<br>${escHtml(o.concepto)}</p>
+    ${ST.asigErr?`<div class="modal-err">${escHtml(ST.asigErr)}</div>`:''}
+    <div class="form-row"><label>Unidades</label>
+      <input type="text" id="asig-q" placeholder="Buscar por número o cliente" value="${escHtml(ST.asigQuery)}" oninput="asigQueryInput(this.value)" autocomplete="off">
+      <div class="oc-unit-box">
+        <div class="oc-unit-list" id="asig-list">${asigListInner()}</div>
+        <div class="oc-unit-bar"><span style="flex:1" id="asig-cuenta">${n} seleccionada${n===1?'':'s'}</span>
+          <span class="lnk" onclick="asigClear()">Limpiar</span></div>
+      </div>
+      <div class="oc-chips" id="asig-chips">${asigChipsInner()}</div>
+    </div>
+    <div class="form-row"><label>Monto a asignar (MXN)</label>
+      <input type="number" id="asig-monto" inputmode="decimal" step="0.01" min="0" value="${escHtml(ST.asigMonto)}" oninput="asigMontoInput(this.value)">
+      <div class="oc-split" id="asig-resumen">${asigResumenInner()}</div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn" onclick="cerrarAsignar()">Cancelar</button>
+      <button class="btn primary" onclick="doAsignarStock()" ${ST.asigSaving?'disabled':''}>
+        ${ST.asigSaving?'<span class="spinner"></span>Asignando...':'Asignar'}</button>
+    </div>
+  </div></div>`;
+}
+async function doAsignarStock(){
+  if(ST.asigSaving) return;
+  const o=ST.ordenes.find(x=>x.id===ST.asigId);
+  if(!o) return;
+  const saldo=Number(o.monto||0);
+  const chosen=asigSeleccion();
+  const monto=parseFloat(ST.asigMonto);
+  if(!chosen.length){ ST.asigErr='Elige al menos una unidad.'; render(); return; }
+  if(!isFinite(monto)||monto<=0){ ST.asigErr='Escribe un monto válido.'; render(); return; }
+  if(monto>saldo+1e-9){ ST.asigErr=`El monto no puede pasar del saldo de ${mxnC(saldo)}.`; render(); return; }
+  ST.asigErr=''; ST.asigSaving=true; render();
+
+  // Un renglón por unidad, igual que una orden capturada con varias unidades.
+  // Nacen pagadas porque la compra ya se pagó: lo que faltaba era la unidad.
+  const parts=ocSplit(Math.round(monto*100), chosen.length);
+  const hijos=chosen.map((b,i)=>({
+    bus_id:b.id, parent_id:o.id,
+    tipo_servicio:o.tipo_servicio, concepto:`${o.concepto} (de ${o.folio})`,
+    proveedor:o.proveedor, cuenta_referencia:o.cuenta_referencia||null,
+    banco:o.banco||null, monto:parts[i], solicita:o.solicita, status:'pagada'
+  }));
+  const {data,error}=await dbInsertOrdenes(hijos);
+  if(error){ ST.asigSaving=false; ST.asigErr='No se pudieron crear los renglones: '+(error.message||error); render(); return; }
+
+  // Baja el saldo. Si se agota, la orden de stock queda cerrada como asignada.
+  const resto=Math.round((saldo-monto)*100)/100;
+  const patch=resto>0?{monto:resto}:{monto:0, stock_estado:'asignada'};
+  const {error:e2}=await dbUpdateOrden(o.id,patch);
+  if(e2){
+    ST.asigSaving=false;
+    ST.asigErr='Se crearon los renglones pero no se pudo bajar el saldo: '+(e2.message||e2);
+    render(); return;
+  }
+  Object.assign(o,patch);
+  (data||[]).forEach(r=>ST.ordenes.unshift(r));
+  // Cada renglón nuevo ya está pagado, así que va a la bitácora de su unidad.
+  for(const r of (data||[])){ await syncOrdenBitacora(r); }
+  ST.asigSaving=false;
+  cerrarAsignar();
+  showToast(resto>0?`Asignada · quedan ${mxnC(resto)} de saldo`:'Asignada por completo');
+}
+async function doConsumirStock(id){
+  const o=ST.ordenes.find(x=>x.id===id);
+  if(!o) return;
+  if(!confirm(`¿Cerrar ${o.folio} como consumida sin unidad?\n\nSigue contando como gasto (${mxnC(o.monto)}), pero ya no se repartirá entre unidades.`)) return;
+  const {error}=await dbUpdateOrden(id,{stock_estado:'consumida'});
+  if(error){ showToast('Error al cerrar la orden','error'); return; }
+  o.stock_estado='consumida'; render();
+  showToast('Cerrada como consumida sin unidad');
+}
 function renderComprasHub(){
   const isAdmin=ST.role==='admin';
   const buses=cityBuses().slice().sort(cmpUnidad);
   const rows=applyComprasFilters();
   const totalMonto=rows.reduce((s,o)=>s+Number(o.monto||0),0);
-  const uniqBuses=new Set(rows.map(o=>o.bus_id)).size;
+  const uniqBuses=new Set(rows.filter(o=>!ocEsStock(o)).map(o=>o.bus_id)).size;
   const hasFilters=ST.pcBus!=='all'||ST.pcTipo!=='all'||ST.pcStatus!=='all'||ST.pcFrom||ST.pcTo;
 
   let h=renderPendientesPago();
+  h+=renderPendientesAsignar();
   h+=`<div class="card">
     <div class="section-hdr" style="margin-bottom:1rem"><h4>Filtros</h4>
       ${hasFilters?`<button class="btn sm ghost" onclick="ST.pcBus='all';ST.pcTipo='all';ST.pcStatus='all';ST.pcFrom='';ST.pcTo='';render()">Limpiar filtros</button>`:''}
@@ -2003,11 +2248,10 @@ function renderComprasHub(){
       </tr></thead>
       <tbody>`;
   rows.forEach(o=>{
-    const bus=ST.buses.find(b=>b.id===o.bus_id);
     h+=`<tr>
       <td style="padding-left:1.25rem;white-space:nowrap;font-weight:500">${escHtml(o.folio)}</td>
       <td style="white-space:nowrap;color:var(--text2)">${o.created_at.slice(0,10)}</td>
-      <td style="font-weight:500;white-space:nowrap">${bus?.name||'—'}</td>
+      <td style="font-weight:500;white-space:nowrap">${escHtml(ocDestino(o))}</td>
       <td style="color:var(--text2);white-space:nowrap">${escHtml(o.tipo_servicio)}</td>
       <td style="color:var(--text2)">${escHtml(o.proveedor)}</td>
       <td style="text-align:right;font-weight:600;white-space:nowrap">${mxn(o.monto)}</td>
@@ -2030,11 +2274,10 @@ function exportComprasCSV(){
   const headers=['Folio','Fecha','Unidad','Tipo de servicio','Proveedor','Cuenta/Referencia','Monto','Solicita','Status'];
   const lines=[headers.join(',')];
   rows.forEach(o=>{
-    const bus=ST.buses.find(b=>b.id===o.bus_id);
     const cells=[
       o.folio,
       o.created_at.slice(0,10),
-      `"${(bus?.name||'').replace(/"/g,'""')}"`,
+      `"${ocDestino(o).replace(/"/g,'""')}"`,
       `"${o.tipo_servicio.replace(/"/g,'""')}"`,
       `"${(o.proveedor||'').replace(/"/g,'""')}"`,
       `"${(o.cuenta_referencia||'').replace(/"/g,'""')}"`,
