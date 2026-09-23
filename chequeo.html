@@ -183,6 +183,14 @@ function today(){ return new Date().toISOString().slice(0,10); }
 function escHtml(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function authCities(){ return ST.auth==='all'?null:ST.auth.split(','); }
 function cityBuses(){ const c=authCities(); return ST.buses.filter(b=>!c||c.includes(b.city)); }
+// Las unidades se identifican por numero, no por texto. localeCompare ordenaba
+// alfabeticamente: "141" caia antes que "22" y la "96" hasta despues de la
+// "915", asi que el capturista no la encontraba y concluia que no estaba dada
+// de alta. Ordenamos por el primer numero del nombre ("ECO 02" -> 2,
+// "724 / 81" -> 724) y desempatamos con collation numerica.
+function unitNum(name){ const m=String(name==null?'':name).match(/\d+/); return m?parseInt(m[0],10):Infinity; }
+function cmpUnidad(a,b){ return (unitNum(a.name)-unitNum(b.name)) || String(a.name).localeCompare(String(b.name),'es',{numeric:true}); }
+
 function chqNormalize(s){
   return (s||'').toLowerCase().normalize('NFD').replace(new RegExp('[̀-ͯ]','g'),'').replace(/\s+/g,' ').trim();
 }
@@ -289,7 +297,7 @@ function renderApp(){
 
 function renderPicker(){
   const q=chqNormalize(ST.pickerQuery);
-  const all=cityBuses().slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const all=cityBuses().slice().sort(cmpUnidad);
   const list=q?all.filter(b=>chqNormalize(b.name).includes(q)||chqNormalize(b.client).includes(q)):all;
   let h=`<input type="text" class="chq-search" placeholder="Buscar unidad por nombre o cliente…" value="${escHtml(ST.pickerQuery)}" oninput="ST.pickerQuery=this.value;render()" autofocus>`;
   if(!list.length){

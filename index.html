@@ -546,6 +546,14 @@ function escHtml(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':
 function authCities(){ return ST.auth==='all'?null:ST.auth.split(','); }
 function adminFilterCities(){ return ST.auth==='all'?Object.keys(CITIES).filter(k=>k!=='admin'):ST.auth.split(','); }
 function cityBuses(){ const c=authCities(); return ST.buses.filter(b=>!c||c.includes(b.city)); }
+// Las unidades se identifican por numero, no por texto. localeCompare ordenaba
+// alfabeticamente: "141" caia antes que "22" y la "96" hasta despues de la
+// "915", asi que el capturista no la encontraba y concluia que no estaba dada
+// de alta. Ordenamos por el primer numero del nombre ("ECO 02" -> 2,
+// "724 / 81" -> 724) y desempatamos con collation numerica.
+function unitNum(name){ const m=String(name==null?'':name).match(/\d+/); return m?parseInt(m[0],10):Infinity; }
+function cmpUnidad(a,b){ return (unitNum(a.name)-unitNum(b.name)) || String(a.name).localeCompare(String(b.name),'es',{numeric:true}); }
+
 function busLogs(id){ return ST.logs.filter(l=>(l.bus_id||l.busId)===id).sort((a,b)=>b.date.localeCompare(a.date)||(b.ts||0)-(a.ts||0)); }
 function tireKM(tire,km){ return Math.max(0,km-(tire.kmAt||0)); }
 function condFill(c){ return c==='good'?'#639922':c==='mid'?'#EF9F27':c==='worn'?'#E24B4A':'#B4B2A9'; }
@@ -1337,7 +1345,7 @@ function checklistBody(bus){
 
 function renderReport(){
   const isAdmin=ST.role==='admin';
-  const buses=cityBuses().slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const buses=cityBuses().slice().sort(cmpUnidad);
   const rows=applyReportFilters();
   const totalCost=rows.reduce((s,r)=>s+r.costo,0);
   const porPagar=rows.filter(r=>r.origen==='compra'&&ocPorPagar(r.pago));
@@ -1738,7 +1746,7 @@ function renderChqZonaSearch(){
     <div class="form-row" style="margin:0"><label>Unidad</label>
       <select onchange="ST.chqZonaBusId=this.value;render()">
         <option value="all">Todas las unidades</option>
-        ${ST.buses.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(b=>`<option value="${b.id}"${ST.chqZonaBusId===b.id?' selected':''}>${b.name}</option>`).join('')}
+        ${ST.buses.slice().sort(cmpUnidad).map(b=>`<option value="${b.id}"${ST.chqZonaBusId===b.id?' selected':''}>${b.name}</option>`).join('')}
       </select></div>
   </div></div>`;
   if(!ST.chqZonaSel) return h+`<div class="empty-state">Selecciona una zona para buscar</div>`;
@@ -1919,7 +1927,7 @@ function renderPendientesPago(){
 }
 function renderComprasHub(){
   const isAdmin=ST.role==='admin';
-  const buses=cityBuses().slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const buses=cityBuses().slice().sort(cmpUnidad);
   const rows=applyComprasFilters();
   const totalMonto=rows.reduce((s,o)=>s+Number(o.monto||0),0);
   const uniqBuses=new Set(rows.map(o=>o.bus_id)).size;
