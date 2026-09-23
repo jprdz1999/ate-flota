@@ -37,3 +37,21 @@ create policy "authenticated full access" on purchase_orders for all to authenti
 -- misma "memoria de proveedores" que ya alimenta la cuenta/referencia; no hay
 -- tabla de proveedores, la fuente de verdad son las ordenes capturadas.
 alter table purchase_orders add column if not exists banco text;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 2026-09-23: el CHECK de tipo_servicio se quedo atras.
+-- Aplicado a Supabase. Al unificar el vocabulario de tipos (SERVICE_TYPES en
+-- index.html, 13 opciones compartidas entre ordenes de compra y reparaciones)
+-- solo se cambio el front: el CHECK seguia aceptando las 6 opciones originales,
+-- asi que elegir Compresor/Frenos/Motor/Transmision/Mangueras/Muelles/
+-- Enfriamiento hacia fallar el insert en produccion.
+-- Los 6 valores viejos siguen en la lista, asi que no se invalida nada de lo
+-- ya capturado. Si vuelve a cambiar SERVICE_TYPES, este CHECK se mueve con el.
+alter table purchase_orders drop constraint if exists purchase_orders_tipo_servicio_check;
+alter table purchase_orders add constraint purchase_orders_tipo_servicio_check check (
+  tipo_servicio = any (array[
+    'Compresor','Eléctrico','Frenos','Hojalatería y pintura','Llantas',
+    'Mangueras/Conexiones','Mecánica general','Motor','Muelles/Amortiguadores',
+    'Refacciones','Sistema de enfriamiento','Transmisión','Otro'
+  ])
+);
