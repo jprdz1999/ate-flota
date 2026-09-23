@@ -511,11 +511,11 @@ function renderForm(){
       <input type="text" id="oc-proveedor" placeholder="Nombre del proveedor o taller" value="${escHtml(ST.ocProveedor)}" oninput="ocProveedorInput(this.value)" autocomplete="off">
       <div id="oc-prov-sugg">${renderProvSuggInner()}</div>
     </div>
-    <div class="form-row"><label>Cuenta / referencia</label>
-      <input type="text" id="oc-cuenta" placeholder="Opcional" value="${escHtml(ST.ocCuenta)}" oninput="ocCuentaInput(this.value)">
+    <div class="form-row"><label>Cuenta / referencia *</label>
+      <input type="text" id="oc-cuenta" placeholder="CLABE, cuenta o referencia de pago" value="${escHtml(ST.ocCuenta)}" oninput="ocCuentaInput(this.value)">
       <div class="oc-hint" id="oc-cuenta-hint">${renderCuentaHintInner()}</div>
     </div>
-    <div class="form-row"><label>Banco</label>
+    <div class="form-row"><label>Banco *</label>
       <input type="text" id="oc-banco" list="oc-bancos" placeholder="Santander, BBVA, Banorte…" value="${escHtml(ST.ocBanco)}" oninput="ocBancoInput(this.value)" autocomplete="off">
       <datalist id="oc-bancos">${BANCOS.map(b=>`<option value="${escHtml(b)}"></option>`).join('')}</datalist>
       <div class="oc-hint" id="oc-banco-hint">${renderBancoHintInner()}</div>
@@ -552,6 +552,8 @@ async function doSaveOrder(){
   if(!tipo){ ST.ocErr='Selecciona el tipo de servicio.'; render(); return; }
   if(!concepto){ ST.ocErr='El concepto es obligatorio.'; render(); return; }
   if(!proveedor){ ST.ocErr='El proveedor es obligatorio.'; render(); return; }
+  if(!cuenta){ ST.ocErr='La cuenta / referencia es obligatoria.'; render(); return; }
+  if(!banco){ ST.ocErr='El banco es obligatorio.'; render(); return; }
   if(!montoRaw||isNaN(monto)||monto<=0){ ST.ocErr='Ingresa un monto válido.'; render(); return; }
   if(!solicita){ ST.ocErr='El campo "Solicita" es obligatorio.'; render(); return; }
   ST.ocErr='';
