@@ -423,6 +423,18 @@ async function dbUpdateBusKm(id, km){
   const {error}=await sb.from('buses').update({km}).eq('id',id).or('km.is.null,km.lte.'+km);
   return {error};
 }
+// Toda captura de mantenimiento (aceites, reparación, llantas, registro) mueve el
+// odómetro hacia adelante si su km es mayor a la lectura actual; si es menor
+// (evento pasado) no lo toca. Bajarlo es SOLO el ajuste manual (doSaveOdoAjuste).
+// El registro ya quedó guardado: si falla esto se avisa, no se revierte.
+const KM_BUMP_ERR='Registro guardado, pero no se pudo actualizar el odómetro.';
+async function bumpBusKm(bus, km){
+  if(!(km>(bus.km||0))) return {error:null};
+  const prev=bus.km; bus.km=km;
+  const {error}=await dbUpdateBusKm(bus.id,km);
+  if(error) bus.km=prev;
+  return {error};
+}
 async function dbSaveLog(log){
   if(!sb) return {error:'Sin conexión'};
   const {error}=await sb.from('service_logs').insert(log);
@@ -1089,6 +1101,7 @@ function renderResumen(bus){
       <div class="kv"><span>Registros</span><b>${busLogs(bus.id).length}</b></div>
     </div>`;
   if(isAdmin){
+    h+=`<button class="btn-ghost-lg" onclick="navigate('/unidad/${uid_}/odometro')">Ajustar odómetro</button>`;
     h+=`<button class="btn-ghost-lg" onclick="ST.modal='chqQr';ST.chqQrBusId='${bus.id}';render()">QR de chequeo</button>`;
     h+=`<button class="btn-ghost-lg" style="border-color:rgba(229,72,77,.4);color:var(--red-dark)" onclick="doDelBus('${bus.id}')">Eliminar unidad</button>`;
   }
@@ -1318,6 +1331,10 @@ function renderActionScreen(bus){
   } else if(A==='checklist-nuevo'){
     title='Nueva inspección'; backTo='/unidad/'+uid_+'/checklist';
     body=checklistBody(bus); save=`doSaveChecklist('${bus.id}')`;
+  } else if(A==='odometro'){
+    title='Ajustar odómetro';
+    if(ST.role==='admin'){ body=odometroBody(bus); save=`doSaveOdoAjuste('${bus.id}')`; }
+    else body=`<div class="rcard"><p style="color:var(--text2);margin:0">Solo un administrador puede ajustar el odómetro.</p></div>`;
   } else {
     title='Próximamente';
     body=`<div class="rcard"><p style="color:var(--text2);margin:0">Esta acción se construye en una fase posterior del rediseño.</p></div>`;
@@ -1376,6 +1393,18 @@ function registroBody(bus){
       <textarea id="lm-desc" rows="2" placeholder="Ej: Aceite 5W-30, filtro aire, filtro aceite, bujías…"></textarea></div>
     <div class="form-row"><label>Costo ($)</label><input type="number" id="lm-cost" value="0" min="0" inputmode="numeric"></div>
     <div class="form-row"><label>Técnico / Taller</label><input type="text" id="lm-tech" placeholder="Nombre o taller"></div>`;
+}
+// Corrección manual del odómetro (error de dedo). Es la ÚNICA vía para bajarlo:
+// todas las capturas solo lo avanzan. Los valores viven en ST para que un
+// error de validación (que re-renderiza) no borre lo escrito.
+function odometroBody(bus){
+  return `<div class="alert-bar">Odómetro actual: <b>${bus.km?fmt(bus.km)+' km':'Sin dato'}</b></div>
+    <div class="odo-field"><label>Odómetro correcto <span class="req">*</span></label>
+      <input type="number" id="odo-km" class="odo-big" min="0" inputmode="numeric" placeholder="0" value="${escHtml(ST.odoKm??'')}" oninput="ST.odoKm=this.value">
+      <div class="odo-hint">Reemplaza la lectura actual, aunque sea menor. Úsalo solo para corregir un error de captura.</div>
+    </div>
+    <div class="form-row"><label>Motivo *</label>
+      <textarea id="odo-motivo" rows="2" placeholder="Ej: se capturó 152,000 en vez de 125,000" oninput="ST.odoMotivo=this.value">${escHtml(ST.odoMotivo??'')}</textarea></div>`;
 }
 function checklistBody(bus){
   const lastKm=bus.km||0;
@@ -2743,8 +2772,7 @@ async function doSaveLog(busId){
   const desc=document.getElementById('lm-desc').value.trim();
   const cost=parseFloat(costVal)||0;
   const tech=document.getElementById('lm-tech').value.trim();
-  // km_after = odómetro al momento del evento (histórico). NO modifica el
-  // odómetro actual de la unidad (eso lo hacen los chequeos/checklist).
+  // km_after = odómetro al momento del evento; si es mayor al actual lo avanza.
   const log={id:uid(),bus_id:busId,city:bus.city,type,date,description:desc,cost,technician:tech,km_after:kmRaw,ts:Date.now()};
   ST.logs.unshift(log);
   ST.saving=true; ST.modalErr=''; render();
@@ -2753,9 +2781,10 @@ async function doSaveLog(busId){
     ST.logs=ST.logs.filter(l=>l.id!==log.id);
     ST.saving=false; ST.modalErr='Error al guardar. Intenta de nuevo.'; render(); return;
   }
+  const {error:eKm}=await bumpBusKm(bus,kmRaw);
   ST.saving=false; ST.modal=null; ST.modalErr='';
   navigate('/unidad/'+encodeURIComponent(busId)+'/historial');
-  showToast('Registro guardado');
+  showToast(eKm?KM_BUMP_ERR:'Registro guardado', eKm?'error':undefined);
 }
 
 async function doSaveTire(busId){
@@ -2775,7 +2804,7 @@ async function doSaveTire(busId){
   const cond=document.getElementById('tm-cond').value;
   const cost=parseFloat(costVal)||0;
   const notes=document.getElementById('tm-notes').value.trim();
-  const kmAfter=kmRaw;  // km del evento (histórico); no cambia el odómetro actual
+  const kmAfter=kmRaw;  // km del evento; si es mayor al actual avanza el odómetro (bumpBusKm)
   // snapshot for rollback
   const prevKm=bus.km;
   const prevTires=JSON.parse(JSON.stringify(bus.tires||{}));
@@ -2803,9 +2832,10 @@ async function doSaveTire(busId){
       bus.km=prevKm; bus.tires=prevTires; ST.logs=ST.logs.filter(l=>l.id!==log.id);
       ST.saving=false; ST.modalErr='Error al guardar. Intenta de nuevo.'; render(); return;
     }
+    const {error:eKm}=await bumpBusKm(bus,kmAfter);
     ST.saving=false; ST.modal=null; ST.tirePrePos=null; ST.tirePreEvent=null; ST.modalErr=''; ST.selTire=dest;
     navigate('/unidad/'+encodeURIComponent(busId)+'/mantenimiento');
-    showToast(`Rotación guardada: ${POS_NAMES[pos]} ${arrow} ${POS_NAMES[dest]}`);
+    showToast(eKm?KM_BUMP_ERR:`Rotación guardada: ${POS_NAMES[pos]} ${arrow} ${POS_NAMES[dest]}`, eKm?'error':undefined);
     return;
   }
   if(event==='retire'){
@@ -2823,8 +2853,10 @@ async function doSaveTire(busId){
     ST.logs=ST.logs.filter(l=>l.id!==logEntry.id);
     ST.saving=false; ST.modalErr='Error al guardar. Intenta de nuevo.'; render(); return;
   }
+  const {error:eKm}=await bumpBusKm(bus,kmAfter);
   ST.saving=false; ST.modal=null; ST.tirePrePos=null; ST.tirePreEvent=null; ST.modalErr=''; ST.selTire=pos;
   navigate('/unidad/'+encodeURIComponent(busId)+'/mantenimiento');
+  if(eKm) showToast(KM_BUMP_ERR,'error');
 }
 
 async function doSaveBus(){
@@ -2890,7 +2922,7 @@ async function doSaveServiceLog(busId, svcType, pfx){
     ].filter(([id])=>document.getElementById(id)?.checked).map(([,lbl])=>lbl);
     if(extras.length) parts.push(extras.join(', '));
   }
-  // km_after = odómetro al momento del cambio (histórico). No toca el odómetro actual.
+  // km_after = odómetro al momento del cambio; si es mayor al actual lo avanza.
   const kmAfter=kmRaw;
   const desc=parts.join(' · ');
   const log={id:uid(),bus_id:busId,city:bus.city,type:svcType,date,description:desc,cost,km_after:kmAfter,ts:Date.now()};
@@ -2901,9 +2933,10 @@ async function doSaveServiceLog(busId, svcType, pfx){
     ST.logs=ST.logs.filter(l=>l.id!==log.id);
     ST.saving=false; ST.modalErr='Error al guardar. Intenta de nuevo.'; ST.svcErrType=svcType; render(); return;
   }
+  const {error:eKm}=await bumpBusKm(bus,kmAfter);
   ST.saving=false; ST.modalErr='';
   navigate('/unidad/'+encodeURIComponent(busId)+'/servicio');
-  showToast(`${svcLabels[svcType]||'Servicio'} registrado`);
+  showToast(eKm?KM_BUMP_ERR:`${svcLabels[svcType]||'Servicio'} registrado`, eKm?'error':undefined);
 }
 
 async function doDelServiceLog(id){
@@ -2942,7 +2975,7 @@ async function doSaveRepairLog(busId){
   if(!repType){ ST.modalErr='Selecciona el tipo de reparación.'; render(); return; }
   if(!desc){ ST.modalErr='La descripción es obligatoria.'; render(); return; }
   if(costRaw===''||isNaN(cost)||cost<0){ ST.modalErr='El costo es obligatorio.'; render(); return; }
-  // km_after = odómetro al momento de la reparación (histórico). No toca el odómetro actual.
+  // km_after = odómetro al momento de la reparación; si es mayor al actual lo avanza.
   const kmAfter=kmRaw;
   const typeLbl=REPAIR_TYPES.find(r=>r.id===repType)?.lbl||repType;
   const fullDesc=`${typeLbl} · ${desc}`;
@@ -2954,9 +2987,10 @@ async function doSaveRepairLog(busId){
     ST.logs=ST.logs.filter(l=>l.id!==log.id);
     ST.saving=false; ST.modalErr='Error al guardar. Intenta de nuevo.'; render(); return;
   }
+  const {error:eKm}=await bumpBusKm(bus,kmAfter);
   ST.saving=false; ST.modalErr='';
   navigate('/unidad/'+encodeURIComponent(busId)+'/reparaciones');
-  showToast('Reparación registrada');
+  showToast(eKm?KM_BUMP_ERR:'Reparación registrada', eKm?'error':undefined);
 }
 
 async function doDelRepairLog(id){
@@ -2966,6 +3000,36 @@ async function doDelRepairLog(id){
   render();
   const {error}=await dbDeleteLog(id);
   if(error){ ST.logs=prev; showToast('Error al eliminar. Intenta de nuevo.','error'); }
+}
+
+// Ajuste manual: escribe el km tal cual (sin el candado de "solo sube" de
+// dbUpdateBusKm) y deja constancia en service_logs type 'km' con el antes, el
+// después y el motivo.
+async function doSaveOdoAjuste(busId){
+  if(ST.saving || ST.role!=='admin') return;
+  const bus=ST.buses.find(b=>b.id===busId);
+  if(!bus) return;
+  const kmVal=(ST.odoKm||'').trim();
+  const motivo=(ST.odoMotivo||'').trim();
+  const km=parseInt(kmVal,10);
+  if(kmVal===''){ ST.modalErr='Captura el odómetro correcto.'; render(); return; }
+  if(isNaN(km)||km<0){ ST.modalErr='El odómetro no es un número válido.'; render(); return; }
+  if(!motivo){ ST.modalErr='El motivo es obligatorio.'; render(); return; }
+  const prevKm=bus.km||0;
+  if(km===prevKm){ ST.modalErr='Es la misma lectura que ya tiene la unidad.'; render(); return; }
+  if(!confirm(`¿Cambiar el odómetro de la unidad ${bus.name} de ${fmt(prevKm)} km a ${fmt(km)} km?`)) return;
+  const log={id:uid(),bus_id:busId,city:bus.city,type:'km',date:today(),
+    description:`Ajuste de odómetro: ${fmt(prevKm)} → ${fmt(km)} km · ${motivo}`,
+    cost:0,km_after:km,technician:ST.authEmail||null,ts:Date.now()};
+  ST.saving=true; ST.modalErr=''; render();
+  const {error:e1}=await dbUpdateBus(busId,{km});
+  if(e1){ ST.saving=false; ST.modalErr='Error al guardar. Intenta de nuevo.'; render(); return; }
+  bus.km=km;
+  const {error:e2}=await dbSaveLog(log);
+  if(!e2) ST.logs.unshift(log);
+  ST.saving=false; ST.odoKm=''; ST.odoMotivo='';
+  navigate('/unidad/'+encodeURIComponent(busId));
+  showToast(e2?'Odómetro ajustado, pero no se guardó la bitácora del ajuste.':`Odómetro ajustado a ${fmt(km)} km`, e2?'error':undefined);
 }
 
 function showClErr(msg){ const el=document.getElementById('cl-form-err'); if(el){ el.textContent=msg; el.style.display=msg?'block':'none'; } }
@@ -3116,7 +3180,7 @@ const HUB_SLUG_BY_VIEW = Object.fromEntries(Object.entries(HUB_SLUGS).map(([slug
 const ACEITE_SLUGS = { motor:'svc', transmision:'svc_trans', diferencial:'svc_diff' };
 const ACEITE_SLUG_BY_TYPE = { svc:'motor', svc_trans:'transmision', svc_diff:'diferencial' };
 // Acciones que son pantalla propia (header pegajoso + barra de guardar inferior).
-const ACTION_SLUGS = new Set(['aceite','reparacion','registro','checklist-nuevo','golpes','chequeo-nuevo']);
+const ACTION_SLUGS = new Set(['aceite','reparacion','registro','checklist-nuevo','golpes','chequeo-nuevo','odometro']);
 
 function parsePath(pathname){
   // Partir el path CRUDO por '/', y decodificar cada segmento después. Si se
@@ -3157,6 +3221,7 @@ function applyRoute(){
   ST.actionParam=r.actionParam||null;
   ST.selService = (r.action==='aceite') ? (ACEITE_SLUGS[r.actionParam]||null) : null;
   ST.selTire=null; ST.modal=null; ST.modalErr='';
+  if(r.action==='odometro'){ ST.odoKm=''; ST.odoMotivo=''; }
   // Al entrar a una inspección de checklist, precarga golpes activos (gris) y limpia los nuevos.
   if(r.action==='checklist-nuevo' && r.busId){
     ST.clPrevPins=activeDanos(r.busId).map(d=>({x:Number(d.x),y:Number(d.y),descripcion:d.descripcion,severidad:d.severidad}));
