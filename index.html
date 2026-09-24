@@ -2,16 +2,16 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Grupo ATE — Control de Flota</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <link rel="stylesheet" href="/shared.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#141618">
+<meta name="theme-color" content="#EEF0F2" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#121417" media="(prefers-color-scheme: dark)">
 <link rel="apple-touch-icon" href="/icon.svg">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -139,7 +139,7 @@ body{background:#0C0E10;font-family:Inter,system-ui,sans-serif;color:var(--text)
 /* Barra superior de la app */
 .appbar{position:sticky;top:0;z-index:30;background:rgba(20,22,24,.94);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
 .appbar-row{display:flex;align-items:center;gap:10px;padding:12px 14px}
-.brand{font-family:"Barlow Condensed",sans-serif;font-size:19px;font-weight:700;text-transform:uppercase;letter-spacing:.07em}
+.brand{font-family:"Familjen Grotesk",sans-serif;font-size:19px;font-weight:700;text-transform:uppercase;letter-spacing:.07em}
 .brand span{color:var(--accent)}
 .iconbtn{width:38px;height:38px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--text);display:grid;place-items:center;cursor:pointer;font-size:15px;flex:0 0 auto}
 .iconbtn:active{background:var(--surface-2)}
@@ -170,7 +170,7 @@ body{background:#0C0E10;font-family:Inter,system-ui,sans-serif;color:var(--text)
 .pad{padding:14px}
 .rcard{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:10px}
 .rcard.act{cursor:pointer}.rcard.act:active{background:var(--surface-2)}
-.grouphead{display:flex;align-items:baseline;gap:8px;padding:16px 2px 8px;font-family:"Barlow Condensed",sans-serif;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.12em;color:var(--text2)}
+.grouphead{display:flex;align-items:baseline;gap:8px;padding:16px 2px 8px;font-family:"Familjen Grotesk",sans-serif;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.12em;color:var(--text2)}
 .grouphead b{color:var(--text3);font-weight:600}
 .badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:3px 8px;border-radius:5px;letter-spacing:.02em;white-space:nowrap}
 .badge .bdot{width:6px;height:6px;border-radius:50%;background:currentColor}
@@ -221,6 +221,170 @@ body{background:#0C0E10;font-family:Inter,system-ui,sans-serif;color:var(--text)
 @media(min-width:900px){.menu-sheet{border-radius:14px}}
 .menu-item{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);color:var(--text);padding:15px 6px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;text-decoration:none}
 .menu-item:last-child{border-bottom:0}
+/* ═══════════════════════════════════════════════════════════════════════════
+   REDISEÑO v2 — paleta clara, rail/tabbar, Inicio, grid, dashboard, hoja de
+   acciones. Va al final del <style> para ganar a todo lo anterior. Los tokens
+   conservan su nombre para que las pantallas de captura hereden el look.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root{
+  --bg:#EEF0F2;--bg2:#F6F7F8;--bg3:#E6E9EC;
+  --surface:#FFFFFF;--surface-2:#F3F4F6;--line:#DDE1E5;
+  --text:#14181D;--text2:#4F5862;--text3:#8A939C;
+  --border:#DDE1E5;--border2:#C7CCD2;
+  --accent:#F2B705;--accent-ink:#3D2E00;--accent-soft:#FFF3C7;
+  --ok:#2C8C4B;--warn:#C77800;--bad:#D93A2B;--none:#8A939C;
+  --blue:#2F6FDB;--blue-dark:#2456B3;--blue-bg:#E6EEFB;
+  --green:#2C8C4B;--green-dark:#1F6B39;--green-bg:#E3F4E8;
+  --amber:#C77800;--amber-dark:#8A5300;--amber-bg:#FDF0D8;
+  --red:#D93A2B;--red-dark:#A82A1E;--red-bg:#FCE8E5;
+  --radius:9px;--radius-lg:12px;
+  --display:'Familjen Grotesk','Inter',sans-serif;
+  --glass:rgba(255,255,255,.94);
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#121417;--bg2:#1B1E23;--bg3:#22262C;
+  --surface:#1B1E23;--surface-2:#22262C;--line:#2C3138;
+  --text:#F1F3F5;--text2:#B4BCC5;--text3:#727B85;
+  --border:#2C3138;--border2:#3A4049;
+  --accent-soft:#3A2E05;
+  --ok:#3FB950;--warn:#D9A21B;--bad:#E5484D;--none:#727B85;
+  --blue:#4C8DE0;--blue-dark:#6FA3EA;--blue-bg:#12223D;
+  --green:#3FB950;--green-dark:#5CD16C;--green-bg:#112A19;
+  --amber:#D9A21B;--amber-dark:#E5B84B;--amber-bg:#332305;
+  --red:#E5484D;--red-dark:#FF8085;--red-bg:#3A1612;
+  --glass:rgba(27,30,35,.94);
+}}
+/* En oscuro --accent-soft es casi del color de --accent-ink: la sección activa
+   del rail se volvía ilegible. Ahí el texto va en el amarillo de acento. */
+@media(prefers-color-scheme:dark){.rail .railnav button.on{color:var(--accent)}}
+body{background:var(--bg);color:var(--text);font-size:15px}
+.num,.ubig,.uodo b,.odo-big{font-family:var(--display);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.grouphead{font-family:var(--display);font-size:16px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--text)}
+.brand{font-family:var(--display);text-transform:none;letter-spacing:0}
+.chip.on{color:var(--surface)}
+.appbar,.uhead,.stickybar,.tabbar,.menu-sheet{background:var(--glass)}
+.wrap:has(.shell){max-width:none;padding:0}
+.btn-ghost-lg,.rcard,.card{background:var(--surface)}
+/* Shell */
+.shell{display:flex;min-height:100vh;align-items:flex-start}
+.rail{display:none}
+.shellmain{flex:1;min-width:0;padding-bottom:calc(84px + env(safe-area-inset-bottom))}
+.shellmain .pad2{max-width:1080px;margin:0 auto;padding:14px 14px 24px}
+.shellmain .pad{max-width:1080px;margin:0 auto}
+.brand2{font-family:var(--display);font-weight:700;font-size:19px;display:flex;align-items:center;gap:8px;color:var(--text)}
+.brand2 i{width:26px;height:26px;border-radius:7px;background:var(--accent);display:inline-flex;align-items:center;justify-content:center;font-style:normal;color:var(--accent-ink);font-size:13px;font-weight:700}
+.tabbar{grid-template-columns:repeat(5,1fr);max-width:none;padding:5px 0 calc(5px + env(safe-area-inset-bottom))}
+.tabbar button{gap:2px;font-size:10.5px;color:var(--text3);position:relative;padding:4px 0}
+.tabbar button svg,.railnav button svg,.railbtn svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tabbar button.on{color:var(--text)}
+.tabbar button.on svg{stroke:var(--accent-ink);fill:var(--accent)}
+.nbadge{position:absolute;top:1px;left:calc(50% + 6px);min-width:17px;height:17px;border-radius:9px;background:var(--bad);color:#fff;font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px;font-style:normal}
+@media(min-width:900px){
+  .shellmain{padding-bottom:32px}
+  .tabbar{display:none}
+  .rail{display:flex;flex-direction:column;width:220px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--line);position:sticky;top:0;height:100vh;padding:22px 12px}
+  .rail .brand2{padding:0 8px 22px}
+  .railnav button{display:flex;align-items:center;gap:11px;width:100%;padding:10px 12px;border-radius:9px;font-weight:500;color:var(--text2);margin-bottom:2px;text-align:left;background:none;border:0;cursor:pointer;font-family:inherit;font-size:14.5px;position:relative}
+  .railnav button.on{background:var(--accent-soft);color:var(--accent-ink)}
+  .railnav button svg{width:20px;height:20px}
+  .railnav .nbadge{position:static;margin-left:auto}
+  .railfoot{margin-top:auto}
+  .railbtn{display:flex;align-items:center;gap:10px;width:100%;padding:9px 12px;border-radius:9px;color:var(--text2);background:none;border:0;cursor:pointer;font-family:inherit;font-size:13.5px}
+  .railbtn:hover{background:var(--surface-2)}
+  .railbtn svg{width:18px;height:18px}
+  .shellmain .pad2{padding:30px 34px 40px}
+  .shellmain .pad{padding:16px 34px 40px}
+  .shellmain.narrow .pad{max-width:640px}
+  .uhead-top{padding:14px 34px 10px}.utabs{padding:0 28px}
+  .fab{display:none}
+  .stickybar{position:sticky;max-width:none}
+}
+@media(max-width:899px){.only-desktop{display:none!important}}
+/* Componentes v2 */
+.h1{font-family:var(--display);font-size:28px;font-weight:700;line-height:1.1;margin:0}
+.h2{font-family:var(--display);font-size:18px;font-weight:600;margin:0}
+.h2.sec{margin:16px 2px 8px}
+.hero{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:16px}
+.muted{color:var(--text2)}.faint{color:var(--text3)}.small{font-size:13px}
+.between{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.stack>*+*{margin-top:12px}
+.card2{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;min-width:0}
+.pill2{display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;font-size:12.5px;font-weight:600;background:var(--surface-2);color:var(--text2)}
+.pill2.amber{background:var(--amber-bg);color:var(--amber-dark)}.pill2.green{background:var(--green-bg);color:var(--green-dark)}
+.btn2{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 14px;border-radius:9px;font-weight:600;font-size:14px;border:1px solid var(--border2);background:var(--surface);color:var(--text);cursor:pointer;font-family:inherit;white-space:nowrap}
+.btn2.sm{padding:7px 12px;font-size:13px}
+.btn2.ghost{border-color:transparent;background:var(--surface-2)}
+.btn2.ate{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn2:active{transform:scale(.985)}
+.kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:14px}
+@media(min-width:640px){.kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.kpi2{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 15px;text-align:left;display:flex;flex-direction:column;gap:2px;min-height:96px;position:relative;cursor:pointer;font-family:inherit;color:var(--text);overflow:hidden}
+.kpi2 .n{font-size:34px;font-weight:700;line-height:1}
+.kpi2 .l{font-size:13px;color:var(--text2);font-weight:500}
+.kpi2 .s{font-size:12px;color:var(--text3);margin-top:auto}
+.kpi2.red .n{color:var(--bad)}.kpi2.amber .n{color:var(--warn)}.kpi2.blue .n{color:var(--blue)}
+.kpi2::after{content:"";position:absolute;left:15px;right:15px;bottom:0;height:3px;border-radius:3px 3px 0 0;background:var(--line)}
+.kpi2.red::after{background:var(--bad)}.kpi2.amber::after{background:var(--warn)}.kpi2.blue::after{background:var(--blue)}
+.cols{display:grid;gap:14px;grid-template-columns:minmax(0,1fr)}
+@media(min-width:900px){.cols{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)}}
+.alert2,.po2{display:flex;align-items:center;gap:12px;width:100%;padding:12px 4px;border:0;border-bottom:1px solid var(--line);background:none;text-align:left;cursor:pointer;font-family:inherit;color:var(--text)}
+.alert2:last-child,.po2:last-child{border-bottom:0}
+.alert2 .u,.po2 .u{font-size:21px;font-weight:700;width:52px;flex-shrink:0}
+.alert2 .t,.po2 .t{flex:1;min-width:0}
+.alert2 .t b,.po2 .t b{display:block;font-weight:600;font-size:14.5px}
+.alert2 .t span,.po2 .t span{font-size:13px;color:var(--text2);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.alert2 .sev{width:4px;align-self:stretch;border-radius:2px;background:var(--line);flex-shrink:0}
+.alert2 .sev.red{background:var(--bad)}.alert2 .sev.amber{background:var(--warn)}
+.po2 .m{font-size:16px;font-weight:700;white-space:nowrap}
+.chev{color:var(--text3);font-size:18px}
+.ugrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.ucard{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:13px 14px;text-align:left;display:flex;flex-direction:column;gap:6px;min-height:118px;position:relative;overflow:hidden;cursor:pointer;font-family:inherit;color:var(--text)}
+.ucard .n{font-size:30px;font-weight:700;line-height:1}
+.ucard .c{font-size:12.5px;color:var(--text2);line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ucard .st{margin-top:auto}
+.ucard .km{position:absolute;top:13px;right:14px;font-size:11.5px;color:var(--text3)}
+.ucard.red,.ucard.amber{border-color:var(--bad)}.ucard.amber{border-color:var(--warn)}
+.ucard.red::before,.ucard.amber::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--bad)}
+.ucard.amber::before{background:var(--warn)}
+/* Dashboard de unidad */
+.health{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:14px}
+.hbox{background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:10px 6px;text-align:center}
+.hbox .v{font-size:17px;font-weight:700;line-height:1.1}
+.hbox .k{font-size:10.5px;color:var(--text3);margin-top:3px}
+.hbox.red .v{color:var(--bad)}.hbox.amber .v{color:var(--warn)}.hbox.green .v{color:var(--ok)}
+.dash{display:grid;gap:12px;grid-template-columns:minmax(0,1fr)}
+@media(min-width:900px){.dash{grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start}}
+.pend{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.pend:last-child{border-bottom:0;padding-bottom:0}
+.pend b{font-size:14.5px;font-weight:600}
+.pend .ic{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;background:var(--surface-2);color:var(--text2)}
+.pend .ic.red{background:var(--red-bg);color:var(--red-dark)}.pend .ic.amber{background:var(--amber-bg);color:var(--amber-dark)}.pend .ic.blue{background:var(--blue-bg);color:var(--blue-dark)}
+.tl{position:relative;padding-left:22px}
+.tl::before{content:"";position:absolute;left:6px;top:8px;bottom:8px;width:2px;background:var(--line)}
+.tli{position:relative;padding:6px 0 12px}
+.tli::before{content:"";position:absolute;left:-20px;top:11px;width:10px;height:10px;border-radius:50%;background:var(--surface);border:2px solid var(--text3)}
+.tli.blue::before{border-color:var(--blue)}.tli.green::before{border-color:var(--ok)}.tli.red::before{border-color:var(--bad)}.tli.ate::before{border-color:var(--accent);background:var(--accent)}
+.tli .d{font-size:12px;color:var(--text3)}
+.tli b{display:block;font-weight:600;font-size:14px}
+.tli span{font-size:13px;color:var(--text2);display:block}
+.fab{position:fixed;left:14px;right:14px;bottom:calc(74px + env(safe-area-inset-bottom));z-index:35;background:var(--accent);color:var(--accent-ink);border:0;border-radius:11px;padding:15px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+/* Hoja de acciones */
+.sheet2{max-height:88vh;overflow-y:auto;border-radius:20px 20px 0 0;background:var(--surface)}
+@media(min-width:900px){.sheet2{border-radius:20px;max-width:520px}}
+.sheet2 .handle{width:40px;height:4px;border-radius:2px;background:var(--border2);margin:0 auto 12px}
+.action{display:flex;align-items:center;gap:14px;width:100%;padding:12px 8px;border-radius:9px;text-align:left;background:none;border:0;cursor:pointer;font-family:inherit;color:var(--text);text-decoration:none}
+.action:hover{background:var(--surface-2)}
+.action .ic{width:42px;height:42px;border-radius:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--surface-2)}
+.action .ic svg{width:21px;height:21px;stroke:var(--text);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.action .ic.ate{background:var(--accent)}.action .ic.ate svg{stroke:var(--accent-ink)}
+.action .ic.red{background:var(--red-bg)}.action .ic.red svg{stroke:var(--red-dark)}
+.action .tx{flex:1;min-width:0}
+.action .tx b{display:block;font-weight:600;font-size:15px}.action .tx span{font-size:13px;color:var(--text2)}
+.action.danger .tx b{color:var(--red-dark)}
+.utabs{justify-content:flex-start!important;gap:0}
+.utab{font-size:13.5px}
+.dash .two-col{grid-template-columns:minmax(0,1fr)}
+.dash .tire-wrap{max-width:260px}
 </style>
 </head>
 <body>
@@ -347,8 +511,8 @@ let ST = {
   modal:null, logFilter:'all', tirePrePos:null, tirePreEvent:null,
   loginErr:'', saving:false,
   adminFilter:'all', buses:[], logs:[], toast:null, toastType:null, modalErr:'',
-  view:'fleet', rptBus:'all', rptType:'all', rptOrigen:'all', rptPago:'all', rptFrom:'', rptTo:'',
-  fleetQuery:'', fleetChip:'atencion',
+  view:'home', rptBus:'all', rptType:'all', rptOrigen:'all', rptPago:'all', rptFrom:'', rptTo:'',
+  fleetQuery:'', fleetChip:'todas',
   clView:'history', svcErrType:null, selService:null,
   clPrevPins:[], clPins:[], clPinDraft:null,   // diagrama de golpes en el checklist
 
@@ -885,7 +1049,7 @@ async function doLogin(){
 
 async function doLogout(){
   await sb.auth.signOut();
-  ST.auth=null; ST.role=null; ST.authEmail=null; ST.busId=null; ST.buses=[]; ST.logs=[]; ST.ordenes=[]; ST.adminFilter='all'; ST.view='fleet';
+  ST.auth=null; ST.role=null; ST.authEmail=null; ST.busId=null; ST.buses=[]; ST.logs=[]; ST.ordenes=[]; ST.adminFilter='all'; ST.view='home';
   ST.bases=[]; ST.operadores=[]; ST.operadorAlias=[]; ST.chequeos=[]; ST.chqSignedUrlCache={};
   render();
 }
@@ -893,32 +1057,80 @@ async function doLogout(){
 function renderApp(){
   const bus=ST.busId?ST.buses.find(b=>b.id===ST.busId):null;
   // Rutas de unidad = pantalla completa con su propio header pegajoso.
-  if(bus && ST.action) return renderActionScreen(bus);
+  if(bus && ST.action) return shell(renderActionScreen(bus),{tabbar:false,narrow:true});
   if(bus)              return renderFichaScreen(bus);
   return renderHubShell();  // home / reportes / chequeos / compras
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// REDISEÑO v2 — shell (rail + tabbar), Inicio, grid de unidades, dashboard de
+// unidad y hoja de acciones. Los formularios de captura (checklist, aceite,
+// reparación, registro, llantas, golpes, odómetro) NO cambian: las acciones
+// solo navegan a las pantallas que ya existen.
+// ═══════════════════════════════════════════════════════════════════════════
+const IC={
+  home:'<svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8v9a2 2 0 0 1-2 2h-4v-6H9v6H5a2 2 0 0 1-2-2z"/></svg>',
+  fleet:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M3 12h18M7 21v-4M17 21v-4M7 8h.01M17 8h.01"/></svg>',
+  insp:'<svg viewBox="0 0 24 24"><path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg>',
+  taller:'<svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.4 2.4-2.8-.6-.6-2.8z"/></svg>',
+  report:'<svg viewBox="0 0 24 24"><path d="M4 20h16M6 16V9M11 16V4M16 16v-6M21 16v-3"/></svg>',
+  hist:'<svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg>',
+  search:'<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>',
+  oil:'<svg viewBox="0 0 24 24"><path d="M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11z"/></svg>',
+  tire:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3v6M12 15v6M3 12h6M15 12h6"/></svg>',
+  cart:'<svg viewBox="0 0 24 24"><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/><path d="M2 3h3l2.7 12.4a2 2 0 0 0 2 1.6h8.6a2 2 0 0 0 2-1.6L22 7H6"/></svg>',
+  pin:'<svg viewBox="0 0 24 24"><path d="M12 21s7-6.5 7-11a7 7 0 0 0-14 0c0 4.5 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>',
+  gauge:'<svg viewBox="0 0 24 24"><path d="M4 15a8 8 0 1 1 16 0"/><path d="M12 15l4-5"/><circle cx="12" cy="15" r="1.5"/></svg>',
+  doc:'<svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>',
+  plus:'<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+  user:'<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>',
+  qr:'<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3M21 14v7h-4"/></svg>',
+  trash:'<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
+};
+
+function navItems(){
+  const pend=pendientesCount();
+  const po=ST.role==='admin'?ST.ordenes.filter(o=>ocVisible(o)&&o.status==='pendiente').length:0;
+  return [
+    {v:'home',slug:'/',ic:IC.home,l:'Inicio'},
+    {v:'fleet',slug:'/unidades',ic:IC.fleet,l:'Unidades'},
+    {v:'chequeos',slug:'/chequeos',ic:IC.insp,l:'Pendientes',b:pend},
+    {v:'compras',slug:'/compras',ic:IC.taller,l:'Taller',b:po},
+    {v:'report',slug:'/reportes',ic:IC.report,l:'Reportes'},
+  ];
+}
+// Marco común: rail a la izquierda en escritorio, tabbar abajo en móvil.
+function shell(inner,opts){
+  opts=opts||{};
+  const cur=ST.busId?'fleet':ST.view;
+  const nav=navItems().map(i=>`<button class="${cur===i.v?'on':''}" onclick="${i.v==='chequeos'?"ST.chqHubTab='alertas';":''}navigate('${i.slug}')">${i.ic}<span>${i.l}</span>${i.b?`<em class="nbadge">${i.b}</em>`:''}</button>`).join('');
+  const isAdmin=ST.role==='admin';
+  let h=`<div class="shell"><aside class="rail">
+    <div class="brand2"><i>A</i>ATE Flota</div>
+    <nav class="railnav">${nav}</nav>
+    <div class="railfoot">
+      ${isAdmin?`<button class="railbtn" onclick="ST.modal='create';render()">${IC.plus}<span>Nuevo</span></button>`:''}
+      <button class="railbtn" onclick="ST.modal='account';render()">${IC.user}<span>${escHtml((ST.authEmail||'Cuenta').split('@')[0])}</span></button>
+    </div></aside>
+    <div class="shellmain${opts.narrow?' narrow':''}">${inner}</div></div>`;
+  if(opts.tabbar!==false) h+=`<nav class="tabbar">${nav}</nav>`;
+  return h;
+}
+
 function renderHubShell(){
-  const pend=ST.chequeos.filter(c=>!c.alerta_atendida).length;
-  let h=`<div class="appbar" style="margin-bottom:8px"><div class="appbar-row">
-    <div class="brand">Grupo <span>ATE</span></div><div style="flex:1"></div>
-    <button class="iconbtn" title="Nuevo" onclick="ST.modal='create';render()">＋</button>
+  let h=`<div class="appbar only-mobile"><div class="appbar-row">
+    <div class="brand2"><i>A</i>ATE Flota</div><div style="flex:1"></div>
+    ${ST.role==='admin'?`<button class="iconbtn" title="Nuevo" onclick="ST.modal='create';render()">＋</button>`:''}
     <button class="iconbtn" title="Cuenta" onclick="ST.modal='account';render()">◍</button>
   </div></div>`;
-
-  h+=`<div style="padding:0 14px">`;
+  h+=`<div class="pad2">`;
   if(ST.view==='report')        h+=renderReport();
   else if(ST.view==='chequeos') h+=renderChqHub();
   else if(ST.view==='compras')  h+=(ST.role==='admin'?renderComprasHub():`<div class="empty-state">El taller (órdenes de compra) es solo para administradores.</div>`);
-  else                          h+=renderFleetHome();
+  else if(ST.view==='fleet')    h+=renderFleetHome();
+  else                          h+=renderHome();
   h+=`</div>`;
-
-  const nav=(view,slug,icon,lbl,badge)=>`<button class="${ST.view===view?'on':''}" onclick="${view==='chequeos'?"ST.chqHubTab='alertas';":''}navigate('${slug}')"><i>${icon}</i>${lbl}${badge?`<span class="chq-badge">${badge}</span>`:''}</button>`;
-  h+=`<nav class="tabbar">
-    ${nav('fleet','/','▤','Flota')}${nav('chequeos','/chequeos','✓','Inspecciones',pend)}
-    ${nav('compras','/compras','⛭','Taller')}${nav('report','/reportes','▦','Reportes')}
-  </nav>`;
-
+  h=shell(h);
   if(ST.modal==='bus')     h+=renderBusModal();
   if(ST.modal==='chqQr')   h+=renderChqQrModal();
   if(ST.modal==='create')  h+=renderCreateMenu();
@@ -926,15 +1138,65 @@ function renderHubShell(){
   return h;
 }
 
-// Home por prioridad: responde "¿qué requiere atención hoy?".
+// ─── INICIO ──────────────────────────────────────────────────────────────────
+function lastInspection(bus){
+  const cl=busLogs(bus.id).find(l=>l.type==='checklist');
+  const cq=ST.chequeos.filter(c=>c.bus_id===bus.id).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha)))[0];
+  return [cl?.date,cq?.fecha].filter(Boolean).sort().pop()||null;
+}
+function daysSince(d){ return d?Math.round((new Date(today())-new Date(d))/86400000):null; }
+function sinInspeccion(bus){ const d=daysSince(lastInspection(bus)); return d==null||d>=14; }
+const FECHA_LARGA=()=>{ const s=new Date().toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long'}); return s.charAt(0).toUpperCase()+s.slice(1); };
+
+function renderHome(){
+  const isAdmin=ST.role==='admin';
+  const buses=cityBuses();
+  const rows=buses.map(b=>({b,s:unitStatus(b)}));
+  const golpes=rows.filter(r=>r.s.badge==='Golpe nuevo').length;
+  const venc=rows.filter(r=>r.s.badge==='Servicio vencido').length;
+  const sinInsp=rows.filter(r=>sinInspeccion(r.b)).length;
+  const insp=pendientesCount();
+  const poPend=isAdmin?ST.ordenes.filter(o=>ocVisible(o)&&o.status==='pendiente'):[];
+  const poTaller=isAdmin?ST.ordenes.filter(o=>ocVisible(o)&&o.status==='autorizada'):[];
+  const nombre=(ST.authEmail||'').split('@')[0];
+  const order={atencion:0,vencer:1,sindatos:2,aldia:3};
+  const top=rows.filter(r=>r.s.group!=='aldia').sort((a,b)=>order[a.s.group]-order[b.s.group]||String(a.b.name).localeCompare(String(b.b.name),undefined,{numeric:true})).slice(0,8);
+  const kpi=(cls,n,l,s,go)=>`<button class="kpi2 ${cls}" onclick="${go}"><span class="n num">${n}</span><span class="l">${l}</span><span class="s">${s}</span></button>`;
+  let h=`<div class="hero"><div><div class="muted small">${FECHA_LARGA()}</div><h1 class="h1">Hola${nombre?', '+escHtml(nombre):''}</h1></div><span class="pill2">${buses.length} unidades</span></div>`;
+  h+=`<div class="kpis">
+    ${kpi('red',golpes,'Golpes nuevos','detectados en inspección',"ST.fleetChip='atencion';navigate('/unidades')")}
+    ${kpi('red',venc,'Servicios vencidos','aceite fuera de intervalo',"ST.fleetChip='atencion';navigate('/unidades')")}
+    ${kpi('amber',sinInsp,'Sin inspección','más de 14 días',"ST.fleetChip='sininsp';navigate('/unidades')")}
+    ${isAdmin?kpi('blue',poPend.length,'Órdenes por aprobar',poPend.length?mxn(poPend.reduce((s,o)=>s+Number(o.monto||0),0))+' pendientes':'todo autorizado',"navigate('/compras')")
+             :kpi('blue',insp,'Pendientes','checklist, servicios y golpes',"ST.chqHubTab='alertas';navigate('/chequeos')")}
+  </div>`;
+  h+=`<div class="cols"><div class="card2"><div class="between" style="margin-bottom:4px"><h2 class="h2">Requieren atención</h2><button class="btn2 sm ghost" onclick="ST.fleetChip='atencion';navigate('/unidades')">Ver todas</button></div>`;
+  if(!top.length) h+=`<div class="empty-state">Toda la flota al día.</div>`;
+  top.forEach(({b,s})=>{ h+=`<button class="alert2" onclick="selectBus('${b.id}')"><span class="sev ${s.cls==='b-bad'?'red':s.cls==='b-warn'?'amber':''}"></span><span class="u num">${b.name}</span><span class="t"><b>${s.badge}</b><span>${s.reason}</span></span><span class="chev">›</span></button>`; });
+  h+=`</div><div class="stack">`;
+  if(isAdmin){
+    h+=`<div class="card2"><div class="between" style="margin-bottom:4px"><h2 class="h2">En taller ahora</h2><button class="btn2 sm ghost" onclick="navigate('/compras')">Taller</button></div>`;
+    if(!poTaller.length) h+=`<div class="empty-state" style="padding:1rem">Sin órdenes autorizadas en curso.</div>`;
+    poTaller.slice(0,6).forEach(o=>{ const b=ST.buses.find(x=>x.id===o.bus_id); h+=`<button class="po2" onclick="${b?`selectBus('${b.id}')`:"navigate('/compras')"}"><span class="u num">${b?b.name:'Stock'}</span><span class="t"><b>${escHtml(o.concepto)}</b><span>${escHtml(o.proveedor)} · ${o.folio}</span></span><span class="m num">${mxn(o.monto||0)}</span></button>`; });
+    h+=`</div>`;
+  } else if(insp){
+    h+=`<div class="card2"><div class="between" style="margin-bottom:4px"><h2 class="h2">Pendientes</h2><button class="btn2 sm ghost" onclick="ST.chqHubTab='alertas';navigate('/chequeos')">Ver</button></div><div class="muted small">${insp} pendiente(s) en la flota.</div></div>`;
+  }
+  h+=`<div class="card2"><h2 class="h2" style="margin-bottom:10px">Buscar unidad</h2><div class="search" style="margin:0"><span style="color:var(--text3);display:flex">${IC.search}</span><input inputmode="search" placeholder="Número de unidad…" onkeydown="if(event.key==='Enter'){ST.fleetQuery=this.value;ST.fleetChip='todas';navigate('/unidades')}"></div></div>`;
+  h+=`</div></div>`;
+  return h;
+}
+
+// ─── UNIDADES (grid) ─────────────────────────────────────────────────────────
 function renderFleetHome(){
   const buses=cityBuses();
   const cities=[...new Set(buses.map(b=>b.city))];
-  let h=`<div class="search"><span style="color:var(--text3)">⌕</span>
-    <input inputmode="numeric" placeholder="Buscar unidad por número…" value="${escHtml(ST.fleetQuery)}" oninput="this.value=this.value.replace(/\\D/g,'');ST.fleetQuery=this.value;refreshFleetList()"></div>`;
+  let h=`<div class="hero"><h1 class="h1">Unidades</h1><span class="pill2" id="fleet-count">${fleetFiltered().length}</span></div>`;
+  h+=`<div class="search"><span style="color:var(--text3);display:flex">${IC.search}</span>
+    <input inputmode="search" placeholder="Buscar por número…" value="${escHtml(ST.fleetQuery)}" oninput="ST.fleetQuery=this.value;refreshFleetList()"></div>`;
   const chip=(id,lbl)=>`<button class="chip${ST.fleetChip===id?' on':''}" onclick="ST.fleetChip='${id}';render()">${lbl}</button>`;
-  h+=`<div class="chips">${chip('atencion','Requieren atención')}${chip('todas','Todas')}${cities.map(c=>chip(c,CITIES[c]?.name||c)).join('')}${chip('pasaje','Pasaje')}${chip('empresarial','Empresarial')}</div>`;
-  h+=`<div id="fleet-list">${renderFleetGroups()}</div>`;
+  h+=`<div class="chips">${chip('todas','Todas')}${chip('atencion','Requieren atención')}${chip('sininsp','Sin inspección')}${chip('pasaje','Pasaje')}${chip('empresarial','Empresarial')}${cities.map(c=>chip(c,CITIES[c]?.name||c)).join('')}</div>`;
+  h+=`<div id="fleet-list">${renderFleetGrid()}</div>`;
   return h;
 }
 function fleetFiltered(){
@@ -942,35 +1204,151 @@ function fleetFiltered(){
   const c=ST.fleetChip;
   if(c==='pasaje') buses=buses.filter(b=>b.client==='Pasaje');
   else if(c==='empresarial') buses=buses.filter(b=>b.client!=='Pasaje');
-  else if(c && c!=='atencion' && c!=='todas') buses=buses.filter(b=>b.city===c);
-  if(ST.fleetQuery) buses=buses.filter(b=>String(b.name).includes(ST.fleetQuery));
+  else if(c==='atencion') buses=buses.filter(b=>unitStatus(b).group==='atencion');
+  else if(c==='sininsp') buses=buses.filter(b=>sinInspeccion(b));
+  else if(c && c!=='todas') buses=buses.filter(b=>b.city===c);
+  if(ST.fleetQuery) buses=buses.filter(b=>String(b.name).toLowerCase().includes(ST.fleetQuery.trim().toLowerCase()));
   return buses;
 }
-function renderFleetGroups(){
-  const rows=fleetFiltered().map(b=>({b, s:unitStatus(b)}));
-  const groups=[{id:'atencion',lbl:'Requieren atención'},{id:'vencer',lbl:'Por vencer'},{id:'sindatos',lbl:'Sin datos de odómetro'},{id:'aldia',lbl:'Al día'}];
-  const soloAtencion = ST.fleetChip==='atencion';
-  let h='', any=false;
-  groups.forEach(g=>{
-    if(soloAtencion && g.id==='aldia') return;
-    const list=rows.filter(r=>r.s.group===g.id).sort((a,b)=>String(a.b.name).localeCompare(String(b.b.name),undefined,{numeric:true}));
-    if(!list.length) return;
-    any=true;
-    h+=`<div class="grouphead">${g.lbl} <b>${list.length}</b></div><div class="rows">`;
-    list.forEach(({b,s})=>{
-      h+=`<button class="frow" onclick="selectBus('${b.id}')">
-        <div class="unit">${b.name}</div>
-        <div class="rowmid"><span class="badge ${s.cls}"><span class="bdot"></span>${s.badge}</span>
-          <div class="rowsub">${s.reason}</div></div>
-        <div class="km">${b.km?fmt(b.km):'—'}</div><div class="chev">›</div>
-      </button>`;
-    });
-    h+=`</div>`;
+function renderFleetGrid(){
+  const order={atencion:0,vencer:1,sindatos:2,aldia:3};
+  const rows=fleetFiltered().map(b=>({b,s:unitStatus(b)}))
+    .sort((a,b)=>order[a.s.group]-order[b.s.group]||String(a.b.name).localeCompare(String(b.b.name),undefined,{numeric:true}));
+  if(!rows.length) return `<div class="empty-state">Sin unidades para este filtro.</div>`;
+  let h=`<div class="ugrid">`;
+  rows.forEach(({b,s})=>{
+    const lv=s.cls==='b-bad'?'red':s.cls==='b-warn'?'amber':'';
+    h+=`<button class="ucard ${lv}" onclick="selectBus('${b.id}')">
+      <span class="km num">${b.km?fmt(b.km)+' km':'sin km'}</span>
+      <span class="n num">${b.name}</span>
+      <span class="c">${escHtml(b.client)}<br>${CITIES[b.city]?.name||b.city}</span>
+      <span class="st"><span class="badge ${s.cls}"><span class="bdot"></span>${s.badge}</span></span>
+    </button>`;
   });
-  if(!any) h=`<div class="empty-state">Sin unidades para este filtro.</div>`;
+  h+=`</div>`;
   return h;
 }
-function refreshFleetList(){ const el=document.getElementById('fleet-list'); if(el) el.innerHTML=renderFleetGroups(); }
+function refreshFleetList(){ const el=document.getElementById('fleet-list'); if(el) el.innerHTML=renderFleetGrid(); const c=document.getElementById('fleet-count'); if(c) c.textContent=fleetFiltered().length; }
+
+// ─── PANTALLA DE UNIDAD ──────────────────────────────────────────────────────
+function renderFichaScreen(bus){
+  let h=uheadUnit(bus,{tabs:true});
+  h+=`<div class="pad">`;
+  if(ST.tab==='mantenimiento')     h+=renderMantenimiento(bus);
+  else if(ST.tab==='inspecciones') h+=renderInspecciones(bus);
+  else                             h+=renderDashboard(bus);
+  h+=`</div>`;
+  h+=`<button class="fab" onclick="ST.modal='actions';render()">Acciones · ${bus.name}</button>`;
+  h=shell(h,{tabbar:true});
+  if(ST.modal==='tire') h+=renderTireModal(bus);
+  if(ST.modal==='actions'||ST.modal==='actions-svc') h+=renderActionsSheet(bus);
+  return h;
+}
+
+// Dashboard: estado de un vistazo, golpes, servicios, llantas, pendientes, historial.
+function renderDashboard(bus){
+  const uid_=encodeURIComponent(bus.id);
+  const isAdmin=ST.role==='admin';
+  const esPasaje=bus.client==='Pasaje';
+  const activos=activeDanos(bus.id);
+  // Peor servicio (solo los que tienen ciclo).
+  let worst=null, sinReg=0;
+  applicableServices(bus).forEach(svc=>{ const al=getServiceAlertFor(bus,svc.type,svc.interval); if(al.status==='none'){sinReg++;return;} const v=al.status==='overdue'?-al.overdueBy:al.remaining; if(!worst||v<worst.v) worst={v,label:svc.label}; });
+  let tireMax=null; Object.entries(bus.tires||{}).forEach(([p,t])=>{ if(t){ const k=tireKM(t,bus.km); if(tireMax==null||k>tireMax) tireMax=k; } });
+  const dIns=daysSince(lastInspection(bus));
+  const H=(cls,v,k)=>`<div class="hbox ${cls}"><div class="v num">${v}</div><div class="k">${k}</div></div>`;
+  let h=`<div class="health">
+    ${H(!bus.km?'':worst?(worst.v<0?'red':worst.v<=1000?'amber':'green'):'amber', !bus.km?'—':worst?(worst.v<0?'−'+fmt(-worst.v):fmt(worst.v)):'—', worst?'km al servicio':'servicio sin registro')}
+    ${H(activos.some(d=>d.severidad==='seguridad')?'red':activos.length?'amber':'green', activos.length, 'golpes activos')}
+    ${H(tireMax==null?'':tireMax>=70000?'red':tireMax>=50000?'amber':'green', tireMax==null?'—':fmt(tireMax), 'km llanta máx')}
+    ${H(dIns==null?'amber':dIns>=14?'amber':'green', dIns==null?'—':dIns+' d', 'última inspección')}
+  </div>`;
+
+  // ── Columna izquierda ──
+  let L='';
+  // Golpes
+  L+=`<div class="card2"><div class="between" style="margin-bottom:8px"><h2 class="h2">Golpes</h2><button class="btn2 sm ghost" onclick="navigate('/unidad/${uid_}/golpes')">Expediente</button></div>`;
+  if(activos.length){
+    L+=renderDanosDiagram(activos);
+    activos.slice(0,4).forEach((d,i)=>{ L+=`<div class="between small" style="padding:5px 0"><span style="display:flex;gap:8px;align-items:center;min-width:0"><span class="badge ${d.severidad==='seguridad'?'b-bad':'b-warn'}">${i+1}</span><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(d.descripcion)}</span></span><span class="faint" style="white-space:nowrap">${d.fecha_deteccion?.slice(5)||''}${d.operador_texto?' · '+escHtml(d.operador_texto.split(' ')[0]):''}</span></div>`; });
+    if(activos.length>4) L+=`<div class="small faint" style="padding-top:4px">+${activos.length-4} más en el expediente</div>`;
+  } else L+=`<div class="muted small">Sin golpes activos.</div>`;
+  L+=`</div>`;
+  // Servicios (bloque existente)
+  L+=`<h2 class="h2 sec">Servicios</h2>${renderService(bus)}`;
+  // Llantas (bloque existente, tal cual)
+  L+=`<h2 class="h2 sec">Llantas</h2>${renderTiresBlock(bus)}`;
+
+  // ── Columna derecha ──
+  let R='';
+  R+=`<div class="card2 only-desktop"><h2 class="h2" style="margin-bottom:6px">Acciones</h2>${actionItems(bus)}</div>`;
+  // Pendientes: alertas accionables + órdenes abiertas
+  const alerts=resumenAlerts(bus);
+  const pos=isAdmin?ST.ordenes.filter(o=>o.bus_id===bus.id&&ocPorPagar(o.status)):[];
+  R+=`<div class="card2"><div class="between" style="margin-bottom:4px"><h2 class="h2">Pendientes</h2><span class="pill2 ${alerts.length+pos.length?'amber':'green'}">${alerts.length+pos.length}</span></div>`;
+  pos.forEach(o=>{ R+=`<div class="pend"><span class="ic blue">$</span><div style="flex:1;min-width:0"><b>${escHtml(o.concepto)}</b><div class="small muted">${o.folio} · ${OC_STATUS_LABELS[o.status]||o.status} · ${mxn(o.monto||0)}</div></div>${o.status==='pendiente'?`<button class="btn2 sm" onclick="navigate('/compras')">Revisar</button>`:''}</div>`; });
+  alerts.forEach(a=>{ const open=a.href?`navigate('${a.href}')`:(a.js||''); R+=`<div class="pend"><span class="ic ${a.solid?'red':'amber'}">!</span><div style="flex:1;min-width:0"><b>${a.title}</b><div class="small muted">${a.desc}</div></div><button class="btn2 sm${a.solid?' ate':''}" onclick="${open.replace(/"/g,'&quot;')}">${a.cta}</button></div>`; });
+  if(!alerts.length&&!pos.length) R+=`<div class="muted small">Nada pendiente. Unidad al día.</div>`;
+  R+=`</div>`;
+  // Historial reciente
+  const logs=busLogs(bus.id).slice(0,5);
+  const kind=l=>l.type==='checklist'?'green':l.type==='repair'?'red':l.type==='compra'?'blue':(l.type||'').startsWith('svc')||l.type==='oil'?'ate':'';
+  const ttl=l=>l.type==='checklist'?'Checklist':l.type==='compra'?'Orden de compra':LOG_TYPES[l.type]||l.type;
+  R+=`<div class="card2"><div class="between" style="margin-bottom:4px"><h2 class="h2">Historial reciente</h2><button class="btn2 sm ghost" onclick="navigate('/unidad/${uid_}/mantenimiento')">Ver todo</button></div>`;
+  if(!logs.length) R+=`<div class="muted small">Sin registros todavía.</div>`;
+  else { R+=`<div class="tl">`; logs.forEach(l=>{ const desc=l.type==='checklist'?(parseChecklist(l)?.conductor||''):(l.description||''); R+=`<div class="tli ${kind(l)}"><div class="d">${l.date}${l.km_after?' · '+fmt(l.km_after)+' km':''}</div><b>${ttl(l)}</b>${desc?`<span>${escHtml(String(desc).slice(0,70))}</span>`:''}${l.cost?`<span>${mxn(l.cost)}</span>`:''}</div>`; }); R+=`</div>`; }
+  R+=`</div>`;
+  // Ficha
+  const tipo=bus.type==='bus'?'Autobús':bus.type==='txl'?'TXL':'Urvan / Sprinter';
+  R+=`<div class="card2"><h2 class="h2" style="margin-bottom:4px">Ficha</h2>
+      <div class="kv"><span>Cliente</span><b>${escHtml(bus.client)}</b></div>
+      <div class="kv"><span>Línea</span><b>${esPasaje?'Pasaje':'Empresarial'}</b></div>
+      <div class="kv"><span>Tipo</span><b>${tipo}</b></div>
+      <div class="kv"><span>Ciudad</span><b>${CITIES[bus.city]?.name||bus.city}</b></div>
+      <div class="kv"><span>Odómetro</span><b>${bus.km?fmt(bus.km)+' km':'Sin dato'}</b></div>
+      <div class="kv"><span>Registros</span><b>${busLogs(bus.id).length}</b></div>
+    </div>`;
+  h+=`<div class="dash"><div class="stack">${L}</div><div class="stack">${R}</div></div>`;
+  return h;
+}
+
+// Hoja de acciones: cada renglón abre la pantalla/modal que ya existía.
+function actionItems(bus){
+  const uid_=encodeURIComponent(bus.id);
+  const isAdmin=ST.role==='admin';
+  const esPasaje=bus.client==='Pasaje';
+  const A=(js,ic,cls,t,s)=>`<button class="action" onclick="ST.modal=null;${js}"><span class="ic ${cls}">${ic}</span><span class="tx"><b>${t}</b><span>${s}</span></span></button>`;
+  let h='';
+  h+= esPasaje
+    ? `<a class="action" href="/chequeo.html?unidad=${uid_}" target="_blank" rel="noopener" onclick="ST.modal=null;render()"><span class="ic ate">${IC.insp}</span><span class="tx"><b>Iniciar chequeo ↗</b><span>Fotos y golpes desde la liga de base</span></span></a>`
+    : A(`navigate('/unidad/${uid_}/checklist-nuevo')`,IC.insp,'ate','Hacer checklist','Inspección con diagrama de golpes');
+  h+=`<button class="action" onclick="ST.modal='actions-svc';render()"><span class="ic">${IC.oil}</span><span class="tx"><b>Completar servicio</b><span>Aceite de motor, transmisión o diferencial</span></span><span class="chev">›</span></button>`;
+  h+=A(`navigate('/unidad/${uid_}/reparacion')`,IC.taller,'','Registrar reparación','Correctivo, directo al historial');
+  h+=A(`ST.tirePrePos=null;ST.tirePreEvent=null;ST.modal='tire';render()`,IC.tire,'','Evento de llanta','Nueva, rotación, reencauche o baja');
+  if(isAdmin) h+=`<a class="action" href="/orden-compra.html" target="_blank" rel="noopener" onclick="ST.modal=null;render()"><span class="ic">${IC.cart}</span><span class="tx"><b>Orden de compra ↗</b><span>Solicitar refacción o trabajo de taller</span></span></a>`;
+  h+=A(`navigate('/unidad/${uid_}/golpes')`,IC.pin,'','Estado de golpes','Expediente acumulado de la unidad');
+  h+=A(`navigate('/unidad/${uid_}/inspecciones')`,IC.hist,'',esPasaje?'Historial de chequeos':'Historial de checklists','Inspecciones y acciones pendientes');
+  if(isAdmin){
+    h+=A(`navigate('/unidad/${uid_}/odometro')`,IC.gauge,'','Ajustar odómetro','Corrección manual con motivo');
+  }
+  return h;
+}
+function renderActionsSheet(bus){
+  const uid_=encodeURIComponent(bus.id);
+  let body='';
+  if(ST.modal==='actions-svc'){
+    body=`<div class="between" style="margin-bottom:6px"><button class="btn2 sm ghost" onclick="ST.modal='actions';render()">‹ Acciones</button><b>Completar servicio</b><span style="width:70px"></span></div>`;
+    applicableServices(bus).forEach(svc=>{
+      const al=getServiceAlertFor(bus,svc.type,svc.interval);
+      const slug=ACEITE_SLUG_BY_TYPE[svc.type];
+      const s=al.status==='none'?'Sin registro':al.status==='overdue'?fmt(al.overdueBy)+' km vencido':fmt(al.remaining)+' km restantes';
+      body+=`<button class="action" onclick="ST.modal=null;navigate('/unidad/${uid_}/aceite/${slug}')"><span class="ic ${al.status==='overdue'?'red':''}">${IC.oil}</span><span class="tx"><b>${svc.label}</b><span>${s}</span></span></button>`;
+    });
+  } else {
+    body=`<div class="between" style="margin-bottom:6px"><h2 class="h2">Unidad ${bus.name}</h2><span class="small faint">${bus.km?fmt(bus.km)+' km':'sin km'}</span></div>${actionItems(bus)}`;
+  }
+  return `<div class="menu-overlay" onclick="if(event.target===this){ST.modal=null;render()}"><div class="menu-sheet sheet2"><div class="handle"></div>${body}</div></div>`;
+}
 
 // Estado accionable de una unidad: grupo de severidad + badge de texto + motivo.
 function unitStatus(bus){
@@ -1026,7 +1404,7 @@ function unitMeta(bus){
 function uheadUnit(bus,opts){
   opts=opts||{};
   const uid_=encodeURIComponent(bus.id);
-  const back = opts.backTo!==undefined ? opts.backTo : '/';
+  const back = opts.backTo!==undefined ? opts.backTo : '/unidades';
   const left = opts.title
     ? `<div style="flex:1;min-width:0"><div class="uttl">${opts.title}</div>
          <div class="umeta"><b class="num" style="color:var(--accent)">${bus.name}</b> · ${unitMeta(bus)}</div></div>`
@@ -1050,63 +1428,7 @@ function uheadUnit(bus,opts){
   return h;
 }
 
-function renderFichaScreen(bus){
-  let h=uheadUnit(bus,{tabs:true});
-  h+=`<div class="pad">`;
-  if(ST.tab==='mantenimiento')     h+=renderMantenimiento(bus);
-  else if(ST.tab==='inspecciones') h+=renderInspecciones(bus);
-  else                             h+=renderResumen(bus);
-  h+=`</div>`;
-  if(ST.modal==='tire') h+=renderTireModal(bus);   // edición de llanta: modal por ahora
-  return h;
-}
-
 // ─── TAB RESUMEN: identidad + alertas accionables + acción primaria + golpes ──
-function renderResumen(bus){
-  const uid_=encodeURIComponent(bus.id);
-  const isAdmin=ST.role==='admin';
-  const esPasaje=bus.client==='Pasaje';
-  // Acción primaria (según línea) + acceso a golpes.
-  let h = esPasaje
-    ? `<a class="btn-primary-lg" style="display:block;text-align:center;text-decoration:none" href="/chequeo.html?unidad=${uid_}" target="_blank" rel="noopener">Iniciar chequeo ↗</a>`
-    : `<button class="btn-primary-lg" onclick="navigate('/unidad/${uid_}/checklist-nuevo')">Iniciar checklist</button>`;
-  const golpes=activeDanos(bus.id).length;
-  h+=`<button class="btn-ghost-lg" onclick="navigate('/unidad/${uid_}/golpes')">Ver estado de golpes${golpes?` · ${golpes}`:''}</button>`;
-
-  // Alertas accionables (nunca una raya gris: cada una es un botón que abre captura).
-  const alerts=resumenAlerts(bus);
-  h+=`<div class="grouphead" style="padding-left:2px">Requiere atención</div>`;
-  if(!alerts.length){
-    h+=`<div class="rcard"><div class="empty"><p style="margin:0;color:var(--text2)">Todo al día. Sin acciones pendientes.</p></div></div>`;
-  } else {
-    alerts.forEach(a=>{
-      const open = a.href ? `navigate('${a.href}')` : (a.js||'');
-      h+=`<div class="rcard act" onclick="${open}"><div class="empty">
-        <div><div style="font-weight:600;font-size:14.5px">${a.title}</div>
-          <p style="margin-top:3px;color:var(--text2);font-size:13px">${a.desc}</p></div>
-        <button class="mini${a.solid?' solid':''}" style="border:1px solid var(--accent);color:${a.solid?'var(--accent-ink)':'var(--accent)'};background:${a.solid?'var(--accent)':'none'};border-radius:8px;padding:8px 12px;font-weight:600;white-space:nowrap;min-height:40px" onclick="event.stopPropagation();${open}">${a.cta}</button>
-      </div></div>`;
-    });
-  }
-
-  // Ficha (identidad).
-  const tipo=bus.type==='bus'?'Autobús':bus.type==='txl'?'TXL':'Urvan / Sprinter';
-  h+=`<div class="grouphead" style="padding-left:2px">Ficha</div>
-    <div class="rcard">
-      <div class="kv"><span>Cliente</span><b>${bus.client}</b></div>
-      <div class="kv"><span>Línea</span><b>${esPasaje?'Pasaje':'Empresarial'}</b></div>
-      <div class="kv"><span>Tipo</span><b>${tipo}</b></div>
-      <div class="kv"><span>Ciudad</span><b>${CITIES[bus.city]?.name||bus.city}</b></div>
-      <div class="kv"><span>Odómetro</span><b>${bus.km?fmt(bus.km)+' km':'Sin dato'}</b></div>
-      <div class="kv"><span>Registros</span><b>${busLogs(bus.id).length}</b></div>
-    </div>`;
-  if(isAdmin){
-    h+=`<button class="btn-ghost-lg" onclick="navigate('/unidad/${uid_}/odometro')">Ajustar odómetro</button>`;
-    h+=`<button class="btn-ghost-lg" onclick="ST.modal='chqQr';ST.chqQrBusId='${bus.id}';render()">QR de chequeo</button>`;
-    h+=`<button class="btn-ghost-lg" style="border-color:rgba(229,72,77,.4);color:var(--red-dark)" onclick="doDelBus('${bus.id}')">Eliminar unidad</button>`;
-  }
-  return h;
-}
 // Deriva las alertas accionables del Resumen (odómetro, aceite, pendientes).
 function resumenAlerts(bus){
   const uid_=encodeURIComponent(bus.id);
@@ -1116,23 +1438,23 @@ function resumenAlerts(bus){
   const nuevosHoy=activeDanos(bus.id).filter(d=>d.fecha_deteccion===today());
   if(nuevosHoy.length){
     const seg=nuevosHoy.some(d=>d.severidad==='seguridad');
-    out.push({title:`${nuevosHoy.length} golpe(s) nuevo(s) hoy`, desc:seg?'Incluye severidad de seguridad.':'Detectado en inspección.', cta:'Ver', solid:true, href:`/unidad/${uid_}/golpes`});
+    out.push({title:`${nuevosHoy.length} golpe(s) nuevo(s) hoy`, desc:seg?'Incluye severidad de seguridad.':'Detectado en inspección.', cta:'Ver', solid:true, lvl:'red', kind:'golpe', href:`/unidad/${uid_}/golpes`});
   }
   if(!bus.km){
     out.push({title:'Sin odómetro registrado', desc:'Nada se puede calcular hasta capturarlo.',
-      cta:'Capturar', solid:true,
+      cta:'Capturar', solid:true, lvl:'data',
       js: esPasaje ? `window.open('/chequeo.html?unidad=${uid_}','_blank')` : `navigate('/unidad/${uid_}/checklist-nuevo')`});
   }
   applicableServices(bus).forEach(svc=>{
     const al=getServiceAlertFor(bus,svc.type,svc.interval);
     const tipoSlug={svc:'motor',svc_trans:'transmision',svc_diff:'diferencial'}[svc.type];
-    if(al.status==='none') out.push({title:`${svc.label} sin registro`, desc:'Registra el último cambio para arrancar el ciclo.', cta:'Registrar', href:`/unidad/${uid_}/aceite/${tipoSlug}`});
-    else if(al.status==='overdue') out.push({title:`${svc.label} vencido`, desc:`${fmt(al.overdueBy)} km pasados.`, cta:'Registrar', solid:true, href:`/unidad/${uid_}/aceite/${tipoSlug}`});
-    else if(al.remaining<=1000) out.push({title:`${svc.label} por vencer`, desc:`Faltan ${fmt(al.remaining)} km.`, cta:'Registrar', href:`/unidad/${uid_}/aceite/${tipoSlug}`});
+    if(al.status==='none') out.push({title:`${svc.label} sin registro`, desc:'Registra el último cambio para arrancar el ciclo.', cta:'Registrar', lvl:'data', href:`/unidad/${uid_}/aceite/${tipoSlug}`});
+    else if(al.status==='overdue') out.push({title:`${svc.label} vencido`, desc:`${fmt(al.overdueBy)} km pasados.`, cta:'Registrar', solid:true, lvl:'red', href:`/unidad/${uid_}/aceite/${tipoSlug}`});
+    else if(al.remaining<=1000) out.push({title:`${svc.label} por vencer`, desc:`Faltan ${fmt(al.remaining)} km.`, cta:'Registrar', lvl:'amber', href:`/unidad/${uid_}/aceite/${tipoSlug}`});
   });
-  Object.entries(bus.tires||{}).forEach(([pos,t])=>{ if(t && tireKM(t,bus.km)>=70000) out.push({title:`Llanta ${POS_NAMES[pos]||pos}`, desc:`${fmt(tireKM(t,bus.km))} km recorridos.`, cta:'Ver', href:`/unidad/${uid_}/mantenimiento`}); });
+  Object.entries(bus.tires||{}).forEach(([pos,t])=>{ if(t && tireKM(t,bus.km)>=70000) out.push({title:`Llanta ${POS_NAMES[pos]||pos}`, desc:`${fmt(tireKM(t,bus.km))} km recorridos.`, cta:'Ver', lvl:'amber', href:`/unidad/${uid_}/mantenimiento`}); });
   const pend=(bus.open_issues||[]).filter(i=>!i.resolved).length;
-  if(pend) out.push({title:`${pend} acción(es) pendiente(s)`, desc:'Reportadas en inspección.', cta:'Ver', href:`/unidad/${uid_}/inspecciones`});
+  if(pend) out.push({title:`${pend} acción(es) pendiente(s)`, desc:'Reportadas en inspección.', cta:'Ver', lvl:'amber', kind:'issues', href:`/unidad/${uid_}/inspecciones`});
   return out;
 }
 
@@ -1582,7 +1904,6 @@ function renderLog(bus){
   h+=`</div></div>`;
 
   h+=`<div><div class="card"><div class="section-hdr"><h4>${bus.name}</h4>
-      ${isAdmin?`<button class="btn sm ghost danger" onclick="doDelBus('${bus.id}')">Eliminar</button>`:''}
     </div>
     <div class="stat-row"><span class="stat-lbl">Cliente</span><span>${bus.client}</span></div>
     <div class="stat-row"><span class="stat-lbl">Ciudad</span><span>${CITIES[bus.city]?.name||bus.city}</span></div>
@@ -1783,14 +2104,58 @@ function renderChqDetail(c){
 
 // ─── MINI-CHEQUEOS: HUB DE OPERACIONES ───────────────────────────────────────
 function renderChqHub(){
-  let h=`<div class="tab-row">
-    <button class="tab${ST.chqHubTab==='alertas'?' active':''}" onclick="ST.chqHubTab='alertas';render()">Alertas</button>
+  let h=`<div class="hero"><h1 class="h1">Pendientes</h1></div><div class="tab-row">
+    <button class="tab${ST.chqHubTab==='alertas'?' active':''}" onclick="ST.chqHubTab='alertas';render()">Pendientes</button>
     <button class="tab${ST.chqHubTab==='zona'?' active':''}" onclick="ST.chqHubTab='zona';render()">Buscar por zona</button>
     <button class="tab${ST.chqHubTab==='operador'?' active':''}" onclick="ST.chqHubTab='operador';render()">Reporte por operador</button>
   </div>`;
-  if(ST.chqHubTab==='alertas')  h+=renderChqAlertas();
+  if(ST.chqHubTab==='alertas')  h+=renderPendientes();
   if(ST.chqHubTab==='zona')     h+=renderChqZonaSearch();
   if(ST.chqHubTab==='operador') h+=renderChqOperadorReport();
+  return h;
+}
+// PENDIENTES: todo lo que hay que atender en la flota, en un solo lugar.
+// Golpes de chequeo sin atender, acciones reportadas en checklist (una por una,
+// con Resolver) y las alertas de mantenimiento de resumenAlerts (servicio
+// vencido o por vencer, llantas, golpe nuevo hoy). La falta de datos (sin
+// odómetro, servicio sin registro) va al final, plegada: son cientos y no son
+// trabajo pendiente sino captura atrasada.
+function pendientesItems(){
+  const items=[];
+  cityBuses().forEach(bus=>{
+    const chq=ST.chequeos.filter(c=>c.bus_id===bus.id&&!c.alerta_atendida&&c.dano_nuevo_detectado);
+    chq.forEach(c=>items.push({bus, lvl:c.severidad_maxima==='seguridad'?'red':'amber',
+      title:`Golpe nuevo en chequeo${c.severidad_maxima==='seguridad'?' · seguridad':''}`,
+      desc:`${c.fecha} · ${escHtml(c.operador_texto||'—')} · ${(c.marcas_nuevas||[]).map(p=>escHtml(p.descripcion)).join(', ')}`,
+      cta:'Marcar atendida', js:`doAttendAlert('${c.id}')`}));
+    (bus.open_issues||[]).filter(i=>!i.resolved).forEach(i=>items.push({bus, lvl:'amber',
+      title:escHtml(i.text), desc:`Reportado en checklist · ${i.date||''}`,
+      cta:'Resolver', js:`doResolveIssue('${bus.id}','${i.id}')`}));
+    resumenAlerts(bus).forEach(a=>{
+      if(a.kind==='issues') return;               // ya van una por una arriba
+      if(a.kind==='golpe' && chq.length) return;   // es el mismo golpe de la alerta de chequeo
+      items.push({bus, lvl:a.lvl||'amber', title:a.title, desc:a.desc, cta:a.cta, js:a.href?`navigate('${a.href}')`:(a.js||'')});
+    });
+  });
+  return items;
+}
+function pendientesCount(){ return pendientesItems().filter(i=>i.lvl!=='data').length; }
+function renderPendientes(){
+  const items=pendientesItems();
+  const secs=[['red','Urgente'],['amber','Por atender'],['data','Faltan datos']];
+  let h='', any=false;
+  secs.forEach(([lvl,lbl])=>{
+    const list=items.filter(i=>i.lvl===lvl).sort((a,b)=>cmpUnidad(a.bus,b.bus));
+    if(!list.length) return;
+    if(lvl!=='data') any=true;
+    const plegado = lvl==='data' && !ST.pendVerDatos;
+    h+=`<div class="between"><h2 class="h2 sec">${lbl} <span class="faint">${list.length}</span></h2>${lvl==='data'?`<button class="btn2 sm ghost" onclick="ST.pendVerDatos=!ST.pendVerDatos;render()">${plegado?'Mostrar':'Ocultar'}</button>`:''}</div>`;
+    if(plegado) return;
+    h+=`<div class="card2">`;
+    list.forEach(i=>{ h+=`<div class="alert2" onclick="selectBus('${i.bus.id}')"><span class="sev ${lvl==='data'?'':lvl}"></span><span class="u num">${i.bus.name}</span><span class="t"><b>${i.title}</b><span>${i.desc}</span></span><button class="btn2 sm${lvl==='red'?' ate':''}" onclick="event.stopPropagation();${i.js.replace(/"/g,'&quot;')}">${i.cta}</button></div>`; });
+    h+=`</div>`;
+  });
+  if(!any) h=`<div class="empty-state">Nada pendiente. Flota al día.</div>`+h;
   return h;
 }
 function renderChqAlertas(){
@@ -2375,7 +2740,6 @@ function renderStatus(bus){
   // Vehicle quick stats
   h+=`<div class="card"><div class="section-hdr">
     <h4>${bus.name}</h4>
-    ${isAdmin?`<button class="btn sm ghost" onclick="ST.modal='chqQr';ST.chqQrBusId='${bus.id}';render()">QR de chequeo</button>`:''}
     </div>
     <div class="stat-row"><span class="stat-lbl">Cliente</span><span>${bus.client}</span></div>
     <div class="stat-row"><span class="stat-lbl">Tipo</span><span>${bus.type==='bus'?'Autobús':bus.type==='txl'?'TXL':'Urvan / Sprinter'}</span></div>
@@ -2437,7 +2801,7 @@ function renderTires(bus){
     }
     h+=`</div>`;
   }
-  h+=`</div></div>`;
+  h+=`</div></div></div>`;  // cierra columna, .card y .two-col
   return h;
 }
 
@@ -2504,7 +2868,7 @@ function renderService(bus){
       else { badge=`<span class="badge b-ok"><i class="bdot"></i>Al día</span>`; } }
     h+=`<div class="rcard">
       <div class="cardhead" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div class="ctitle" style="font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;color:var(--text2)">${svc.label}</div>${badge}</div>`;
+        <div class="ctitle" style="font-family:'Familjen Grotesk',sans-serif;font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;color:var(--text2)">${svc.label}</div>${badge}</div>`;
     if(al.status==='none'){
       h+=`<div class="empty" style="display:flex;align-items:center;justify-content:space-between;gap:10px">
         <p style="margin:0;color:var(--text2);font-size:13px">Sin ciclo activo. Registra el último cambio.</p>
@@ -3175,7 +3539,7 @@ const TAB_SLUG_BY_TAB = Object.fromEntries(Object.entries(TAB_SLUGS).map(([slug,
 // Slugs viejos (7 tabs, antes de consolidar) -> tab nuevo, para no romper links.
 const LEGACY_TAB = { status:'resumen', servicio:'mantenimiento', llantas:'mantenimiento',
   reparaciones:'mantenimiento', checklist:'inspecciones', chequeo:'inspecciones', historial:'inspecciones' };
-const HUB_SLUGS   = { reportes:'report', chequeos:'chequeos', compras:'compras' };
+const HUB_SLUGS   = { reportes:'report', chequeos:'chequeos', compras:'compras', unidades:'fleet' };
 const HUB_SLUG_BY_VIEW = Object.fromEntries(Object.entries(HUB_SLUGS).map(([slug,view])=>[view,slug]));
 const ACEITE_SLUGS = { motor:'svc', transmision:'svc_trans', diferencial:'svc_diff' };
 const ACEITE_SLUG_BY_TYPE = { svc:'motor', svc_trans:'transmision', svc_diff:'diferencial' };
@@ -3187,7 +3551,7 @@ function parsePath(pathname){
   // decodifica el path completo antes de partir, un id con '/' (ej. "75 / 901"
   // -> "75%20%2F%20901") se rompe en dos segmentos y la unidad no se encuentra.
   const seg = pathname.replace(/^\/+|\/+$/g,'').split('/').filter(Boolean).map(s=>{ try{ return decodeURIComponent(s); }catch(e){ return s; } });
-  if(!seg.length) return {view:'fleet'};
+  if(!seg.length) return {view:'home'};
   if(HUB_SLUGS[seg[0]]) return {view:HUB_SLUGS[seg[0]]};
   if(seg[0]==='unidad' && seg[1]){
     const r={view:'fleet', busId:seg[1]};
@@ -3198,7 +3562,7 @@ function parsePath(pathname){
     if(LEGACY_TAB[sub]){ r.tab=LEGACY_TAB[sub]; return r; }
     r.tab='resumen'; return r;
   }
-  return {view:'fleet'};
+  return {view:'home'};
 }
 
 // URL canónica del estado actual (para replaceState al abrir acciones/modales).
@@ -3214,7 +3578,7 @@ function pathForState(){
 
 function applyRoute(){
   const r=parsePath(location.pathname);
-  ST.view=r.view||'fleet';
+  ST.view=r.view||'home';
   ST.busId=r.busId||null;
   ST.tab=r.tab||'resumen';
   ST.action=r.action||null;
@@ -3241,7 +3605,7 @@ function navigate(path, opts){
   render();
   window.scrollTo(0,0);
 }
-function goBack(){ history.length>1 ? history.back() : navigate('/'); }
+function goBack(){ history.length>1 ? history.back() : navigate('/unidades'); }
 
 window.addEventListener('popstate', ()=>{ applyRoute(); render(); });
 
