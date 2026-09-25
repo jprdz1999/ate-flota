@@ -50,7 +50,7 @@ alter table purchase_orders add column if not exists banco text;
 alter table purchase_orders drop constraint if exists purchase_orders_tipo_servicio_check;
 alter table purchase_orders add constraint purchase_orders_tipo_servicio_check check (
   tipo_servicio = any (array[
-    'Compresor','Eléctrico','Frenos','Hojalatería y pintura','Llantas',
+    'A/C','Compresor','Eléctrico','Frenos','Hojalatería y pintura','Llantas',
     'Mangueras/Conexiones','Mecánica general','Motor','Muelles/Amortiguadores',
     'Refacciones','Sistema de enfriamiento','Transmisión','Otro'
   ])
