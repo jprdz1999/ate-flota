@@ -527,6 +527,8 @@ let ST = {
   // ─── Órdenes de Compra (solo lectura/reporte — la captura vive en orden-compra.html) ───
   ordenes:[],
   pcBus:'all', pcTipo:'all', pcStatus:'all', pcFrom:'', pcTo:'',
+  // Taller: 'ordenes' (control de pagos) o 'historial' (bitácora unificada).
+  pcVista:'ordenes', thQ:'',
   // Asignacion de una compra a stock: que orden se esta repartiendo, a que
   // unidades y por cuanto. asigMonto arranca en el saldo completo.
   asigId:null, asigBusIds:[], asigQuery:'', asigMonto:'', asigErr:'', asigSaving:false
@@ -1002,6 +1004,76 @@ function resetReportFilters(){
   ST.rptFrom=''; ST.rptTo=''; render();
 }
 
+// ─── HISTORIAL DE TALLER (unificado) ─────────────────────────────────────────
+// Una sola bitácora de todo lo que se le ha hecho a una unidad: lo capturado
+// directo en la unidad (servicios, llantas, reparaciones) + las órdenes de
+// compra de Taller. La ficha y Taller pintan esta MISMA lista, así que una
+// llanta comprada por orden y un cambio de balatas capturado en la unidad salen
+// en los dos lados. Sale de reportRowsAll: el espejo 'compra' ya viene omitido
+// (se muestra la orden con su status, si no el gasto se contaría doble).
+// Fuera: checklists y ajustes de odómetro (no son trabajo ni gasto) y órdenes
+// rechazadas (anuladas).
+function tallerRows(busId){
+  return reportRowsAll().filter(r=>
+    (!busId || r.busId===busId) &&
+    (r.origen==='compra' ? r.pago!=='rechazada' : r.tipoKey!=='checklist' && r.tipoKey!=='km')
+  ).sort((a,b)=>b.date.localeCompare(a.date)||b.ts-a.ts);
+}
+function tallerMatch(r,q){
+  if(!q) return true;
+  const bus=ST.buses.find(b=>b.id===r.busId);
+  return chqNormalize([r.tipo,r.subtipo,r.descripcion,r.quien,bus?.name,r.date].join(' ')).includes(chqNormalize(q));
+}
+// Los montos de órdenes son solo para admin (mismo criterio que Taller).
+function tallerCosto(r,isAdmin){ return r.origen==='compra'&&!isAdmin ? null : r.costo; }
+function tallerTotals(rows,isAdmin){
+  let gasto=0, porPagar=0;
+  rows.forEach(r=>{ const c=tallerCosto(r,isAdmin); if(c==null) return; gasto+=c; if(r.origen==='compra'&&ocPorPagar(r.pago)) porPagar+=c; });
+  return {gasto,porPagar};
+}
+function tallerRowHtml(r,opts){
+  const bus=ST.buses.find(b=>b.id===r.busId);
+  const esOc=r.origen==='compra';
+  const titulo=esOc ? `${r.subtipo} · Orden de compra` : r.tipoKey==='repair' ? `Reparación · ${r.subtipo}` : r.tipo;
+  // En reparaciones el subtipo ya va al inicio de la descripción.
+  const desc=r.tipoKey==='repair' && r.descripcion.startsWith(r.subtipo+' · ') ? r.descripcion.slice(r.subtipo.length+3) : r.descripcion;
+  const meta=[r.date, opts.showUnit&&bus?'Unidad '+escHtml(bus.name):'', r.km?fmt(r.km)+' km':'', r.quien?escHtml(r.quien):''].filter(Boolean).join(' &nbsp;·&nbsp; ');
+  const costo=tallerCosto(r,opts.isAdmin);
+  const del=opts.canDel && r.tipoKey==='repair' ? `<button class="btn sm ghost" onclick="doDelRepairLog('${r.id}')">✕</button>` : '';
+  return `<div class="log-item">
+    <div class="dot" style="background:${r.color}"></div>
+    <div style="min-width:0">
+      <div class="li-title">${escHtml(titulo)}</div>
+      ${desc?`<div class="li-meta" style="color:var(--text);margin-bottom:2px">${escHtml(desc)}</div>`:''}
+      <div class="li-meta">${meta}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
+      ${costo==null?'':`<span class="li-cost${costo?'':' zero'}">${costo?mxn(costo):'—'}</span>`}
+      ${esOc?`<span class="pill ${OC_STATUS_PILL[r.pago]||'pill-mid'}">${OC_STATUS_LABELS[r.pago]||r.pago}</span>`:''}
+      ${del}
+    </div>
+  </div>`;
+}
+function tallerListHtml(rows,opts){
+  const q=ST.thQ, list=rows.filter(r=>tallerMatch(r,q));
+  if(!list.length) return `<div class="empty-state">${q?'Nada coincide con la búsqueda':'Sin trabajos ni compras registrados'}</div>`;
+  const {gasto,porPagar}=tallerTotals(list,opts.isAdmin);
+  let h=`<div class="rcard" style="padding:4px 14px">
+    <div class="kv"><span>Registros${q?' encontrados':''}</span><b>${list.length}</b></div>
+    <div class="kv"><span>${opts.isAdmin?'Gasto total':'Gasto (sin montos de órdenes)'}</span><b>${mxn(gasto)}</b></div>
+    ${porPagar?`<div class="kv"><span>De eso, órdenes por pagar</span><b style="color:var(--amber-dark)">${mxn(porPagar)}</b></div>`:''}
+  </div><div class="card">`;
+  list.forEach(r=>{ h+=tallerRowHtml(r,opts); });
+  return h+`</div>`;
+}
+// El buscador actualiza solo #th-list (no render()) para no perder el foco.
+function renderTallerHist(rows,opts){
+  ST._thRows=rows; ST._thOpts=opts;
+  return `<div class="search"><input type="search" placeholder="Buscar: llanta, balatas, proveedor, folio…" value="${escHtml(ST.thQ)}" oninput="ST.thQ=this.value;refreshTallerHist()"></div>
+    <div id="th-list">${tallerListHtml(rows,opts)}</div>`;
+}
+function refreshTallerHist(){ const el=document.getElementById('th-list'); if(el) el.innerHTML=tallerListHtml(ST._thRows||[],ST._thOpts||{}); }
+
 // ─── RENDER ──────────────────────────────────────────────────────────────────
 function render(){
   document.getElementById('root').innerHTML = ST.auth ? renderApp() : renderLogin();
@@ -1291,13 +1363,15 @@ function renderDashboard(bus){
   alerts.forEach(a=>{ const open=a.href?`navigate('${a.href}')`:(a.js||''); R+=`<div class="pend"><span class="ic ${a.solid?'red':'amber'}">!</span><div style="flex:1;min-width:0"><b>${a.title}</b><div class="small muted">${a.desc}</div></div><button class="btn2 sm${a.solid?' ate':''}" onclick="${open.replace(/"/g,'&quot;')}">${a.cta}</button></div>`; });
   if(!alerts.length&&!pos.length) R+=`<div class="muted small">Nada pendiente. Unidad al día.</div>`;
   R+=`</div>`;
-  // Historial reciente
-  const logs=busLogs(bus.id).slice(0,5);
-  const kind=l=>l.type==='checklist'?'green':l.type==='repair'?'red':l.type==='compra'?'blue':(l.type||'').startsWith('svc')||l.type==='oil'?'ate':'';
-  const ttl=l=>l.type==='checklist'?'Checklist':l.type==='compra'?'Orden de compra':LOG_TYPES[l.type]||l.type;
+  // Historial reciente: la misma bitácora unificada de taller (incluye órdenes
+  // de compra) + checklists, que también son parte de la vida de la unidad.
+  const recientes=reportRowsAll().filter(r=>r.busId===bus.id && r.tipoKey!=='km' && !(r.origen==='compra'&&r.pago==='rechazada'))
+    .sort((a,b)=>b.date.localeCompare(a.date)||b.ts-a.ts).slice(0,5);
+  const kind=r=>r.origen==='compra'?'blue':r.tipoKey==='checklist'?'green':r.tipoKey==='repair'?'red':(r.tipoKey||'').startsWith('svc')||r.tipoKey==='oil'?'ate':'';
+  const ttl=r=>r.origen==='compra'?`Orden de compra · ${r.subtipo}`:r.tipoKey==='repair'?`Reparación · ${r.subtipo}`:r.tipo;
   R+=`<div class="card2"><div class="between" style="margin-bottom:4px"><h2 class="h2">Historial reciente</h2><button class="btn2 sm ghost" onclick="navigate('/unidad/${uid_}/mantenimiento')">Ver todo</button></div>`;
-  if(!logs.length) R+=`<div class="muted small">Sin registros todavía.</div>`;
-  else { R+=`<div class="tl">`; logs.forEach(l=>{ const desc=l.type==='checklist'?(parseChecklist(l)?.conductor||''):(l.description||''); R+=`<div class="tli ${kind(l)}"><div class="d">${l.date}${l.km_after?' · '+fmt(l.km_after)+' km':''}</div><b>${ttl(l)}</b>${desc?`<span>${escHtml(String(desc).slice(0,70))}</span>`:''}${l.cost?`<span>${mxn(l.cost)}</span>`:''}</div>`; }); R+=`</div>`; }
+  if(!recientes.length) R+=`<div class="muted small">Sin registros todavía.</div>`;
+  else { R+=`<div class="tl">`; recientes.forEach(r=>{ const l=r.origen==='bitacora'?ST.logs.find(x=>x.id===r.id):null; const desc=r.tipoKey==='checklist'?(parseChecklist(l)?.conductor||''):r.tipoKey==='repair'&&r.descripcion.startsWith(r.subtipo+' · ')?r.descripcion.slice(r.subtipo.length+3):r.descripcion; const c=tallerCosto(r,isAdmin); R+=`<div class="tli ${kind(r)}"><div class="d">${r.date}${r.km?' · '+fmt(r.km)+' km':''}</div><b>${escHtml(ttl(r))}</b>${desc?`<span>${escHtml(String(desc).slice(0,70))}</span>`:''}${c?`<span>${mxn(c)}${r.origen==='compra'?' · '+(OC_STATUS_LABELS[r.pago]||r.pago):''}</span>`:''}</div>`; }); R+=`</div>`; }
   R+=`</div>`;
   // Ficha
   const tipo=bus.type==='bus'?'Autobús':bus.type==='txl'?'TXL':'Urvan / Sprinter';
@@ -1307,7 +1381,7 @@ function renderDashboard(bus){
       <div class="kv"><span>Tipo</span><b>${tipo}</b></div>
       <div class="kv"><span>Ciudad</span><b>${CITIES[bus.city]?.name||bus.city}</b></div>
       <div class="kv"><span>Odómetro</span><b>${bus.km?fmt(bus.km)+' km':'Sin dato'}</b></div>
-      <div class="kv"><span>Registros</span><b>${busLogs(bus.id).length}</b></div>
+      <div class="kv"><span>Registros de taller</span><b>${tallerRows(bus.id).length}</b></div>
     </div>`;
   h+=`<div class="dash"><div class="stack">${L}</div><div class="stack">${R}</div></div>`;
   return h;
@@ -1465,35 +1539,12 @@ function renderMantenimiento(bus){
   h+=renderService(bus);
   h+=`<div class="grouphead" style="padding-left:2px">Llantas</div>`;
   h+=renderTiresBlock(bus);
-  h+=`<div class="grouphead" style="padding-left:2px">Reparaciones</div>`;
-  h+=renderRepairs(bus);
-  // Montos de compras: mismo criterio de rol que el resto del taller.
-  if(ST.role==='admin'){
-    h+=`<div class="grouphead" style="padding-left:2px">Órdenes de compra pagadas</div>`;
-    h+=renderComprasBus(bus);
-  }
-  return h;
-}
-// Historial de compras de la unidad: son los espejos que deja una orden al
-// marcarse pagada en el taller (type 'compra'), no captura manual.
-function renderComprasBus(bus){
-  const compras=busLogs(bus.id).filter(l=>l.type==='compra');
-  if(!compras.length){
-    return `<div class="rcard"><div class="empty"><p style="margin:0;color:var(--text2)">Sin órdenes de compra pagadas. Aparecen aquí al marcarlas pagadas en Taller.</p></div></div>`;
-  }
-  const total=compras.reduce((s,l)=>s+Number(l.cost||0),0);
-  let h=`<div class="card">`;
-  compras.forEach(l=>{
-    h+=`<div class="log-item">
-      <div class="dot d-compra"></div>
-      <div>
-        <div class="li-title">${escHtml(l.description||'Orden de compra')}</div>
-        <div class="li-meta">Pagada ${l.date}${l.technician?' &nbsp;·&nbsp; '+escHtml(l.technician):''}${l.km_after?' &nbsp;·&nbsp; '+fmt(l.km_after)+' km':''}</div>
-      </div>
-      <span class="li-cost">${mxn(l.cost||0)}</span>
-    </div>`;
-  });
-  h+=`</div><div class="rcard"><div class="kv"><span>Gasto en compras</span><b>${mxn(total)}</b></div></div>`;
+  // Historial de taller: reparaciones capturadas aquí + órdenes de compra de
+  // Taller + servicios y llantas, en una sola lista (la misma que ve Taller).
+  const uid_=encodeURIComponent(bus.id);
+  h+=`<div class="grouphead" style="padding-left:2px">Historial de taller</div>`;
+  h+=`<button class="btn-primary-lg" style="margin-bottom:12px" onclick="navigate('/unidad/${uid_}/reparacion')">+ Nueva reparación</button>`;
+  h+=renderTallerHist(tallerRows(bus.id),{isAdmin:ST.role==='admin',canDel:true});
   return h;
 }
 // Llantas: en móvil lista de posiciones con valor+color; diagrama solo en escritorio.
@@ -2366,8 +2417,8 @@ function renderPendientesPago(){
     <div class="section-hdr"><h4>Pendientes de pago — ${pend.length}</h4>
       <span style="font-size:14px;font-weight:600">${mxn(total)}</span></div>
     <p style="font-size:12px;color:var(--text2);line-height:1.45;margin-bottom:0.5rem">
-      <b>Marcar pagada</b> agrega la orden a la bitácora e historial de la unidad.
-      <b>Anular</b> la deja como Rechazada y no toca la bitácora. Cualquiera de las dos
+      Toda orden aparece en el historial de taller de su unidad con su status.
+      <b>Marcar pagada</b> la da por pagada; <b>Anular</b> la deja como Rechazada y la saca del historial. Cualquiera de las dos
       se puede revertir después desde el status en la tabla.</p>`;
   pend.forEach(o=>{
     h+=`<div class="pay-row">
@@ -2590,6 +2641,9 @@ function renderComprasHub(){
 
   let h=renderPendientesPago();
   h+=renderPendientesAsignar();
+  const vista=(v,lbl)=>`<button class="chip${ST.pcVista===v?' on':''}" onclick="ST.pcVista='${v}';render()">${lbl}</button>`;
+  h+=`<div class="chips">${vista('ordenes','Órdenes de compra')}${vista('historial','Historial completo de taller')}</div>`;
+  if(ST.pcVista==='historial') return h+renderTallerHistHub(buses);
   h+=`<div class="card">
     <div class="section-hdr" style="margin-bottom:1rem"><h4>Filtros</h4>
       ${hasFilters?`<button class="btn sm ghost" onclick="ST.pcBus='all';ST.pcTipo='all';ST.pcStatus='all';ST.pcFrom='';ST.pcTo='';render()">Limpiar filtros</button>`:''}
@@ -2662,6 +2716,32 @@ function renderComprasHub(){
     <button class="btn primary" onclick="exportComprasCSV()">↓ Exportar CSV</button>
   </div>`;
   return h;
+}
+// Historial completo en Taller: la misma bitácora unificada que la ficha de la
+// unidad (órdenes + reparaciones/servicios/llantas capturados en la unidad).
+// Comparte los filtros de unidad y fechas con la vista de órdenes.
+function renderTallerHistHub(buses){
+  let rows=tallerRows(ST.pcBus==='all'?null:ST.pcBus);
+  if(ST.pcFrom) rows=rows.filter(r=>r.date>=ST.pcFrom);
+  if(ST.pcTo)   rows=rows.filter(r=>r.date<=ST.pcTo);
+  const limpiar=`ST.pcBus='all';ST.pcFrom='';ST.pcTo='';ST.thQ='';render()`;
+  let h=`<div class="card">
+    <div class="section-hdr" style="margin-bottom:1rem"><h4>Filtros</h4>
+      ${ST.pcBus!=='all'||ST.pcFrom||ST.pcTo||ST.thQ?`<button class="btn sm ghost" onclick="${limpiar}">Limpiar filtros</button>`:''}
+    </div>
+    <div class="rpt-filters">
+      <div class="form-row" style="margin:0"><label>Unidad</label>
+        <select onchange="ST.pcBus=this.value;render()">
+          <option value="all">Todas las unidades</option>
+          ${buses.map(b=>`<option value="${b.id}"${ST.pcBus===b.id?' selected':''}>${b.name}</option>`).join('')}
+        </select></div>
+      <div class="form-row" style="margin:0"><label>Desde</label>
+        <input type="date" value="${ST.pcFrom}" onchange="ST.pcFrom=this.value;render()"></div>
+      <div class="form-row" style="margin:0"><label>Hasta</label>
+        <input type="date" value="${ST.pcTo}" onchange="ST.pcTo=this.value;render()"></div>
+    </div>
+  </div>`;
+  return h+renderTallerHist(rows,{isAdmin:true,showUnit:ST.pcBus==='all'});
 }
 function exportComprasCSV(){
   const rows=applyComprasFilters();
@@ -2884,46 +2964,6 @@ function renderService(bus){
     }
     h+=`</div>`;
   });
-  return h;
-}
-
-function renderRepairs(bus){
-  const repairLogs=busLogs(bus.id).filter(l=>l.type==='repair');
-  const total=repairLogs.reduce((s,l)=>s+(l.cost||0),0);
-
-  const uid_=encodeURIComponent(bus.id);
-  let h=`<div class="two-col"><div>`;
-
-  h+=`<button class="btn-primary-lg" style="margin-bottom:12px" onclick="navigate('/unidad/${uid_}/reparacion')">+ Nueva reparación</button>`;
-
-  if(repairLogs.length){
-    h+=`<div class="card">`;
-    repairLogs.forEach(l=>{
-      const cat=REPAIR_TYPES.find(r=>l.description?.startsWith(r.lbl+' · '));
-      h+=`<div class="log-item">
-        <div class="dot d-repair"></div>
-        <div>
-          <div class="li-title">${l.description||'Reparación'}</div>
-          <div class="li-meta">${l.date} &nbsp;·&nbsp; ${fmt(l.km_after||0)} km</div>
-        </div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
-          <span class="li-cost${l.cost?'':' zero'}">${l.cost?mxn(l.cost):'—'}</span>
-          <button class="btn sm ghost" onclick="doDelRepairLog('${l.id}')">✕</button>
-        </div>
-      </div>`;
-    });
-    h+=`</div>`;
-  } else {
-    h+=`<div class="empty-state">Sin reparaciones registradas</div>`;
-  }
-
-  h+=`</div><div><div class="card">
-    <h4 style="margin-bottom:0.75rem">Resumen de reparaciones</h4>
-    <div class="stat-row"><span class="stat-lbl">Total registradas</span><span>${repairLogs.length}</span></div>
-    <div class="stat-row"><span class="stat-lbl">Gasto acumulado</span><span style="font-weight:600">${mxn(total)}</span></div>
-    ${repairLogs.length?`<div class="stat-row"><span class="stat-lbl">Última reparación</span><span>${repairLogs[0].date}</span></div>`:''}
-  </div></div></div>`;
-
   return h;
 }
 
