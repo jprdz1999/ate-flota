@@ -420,16 +420,15 @@ body{background:var(--bg);color:var(--text);font-size:15px}
 .cfecha label{margin:0;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;color:var(--text2)}
 .cfecha input{flex:1;font-size:16px;border:0;background:none;color:var(--text);font-family:inherit;text-align:right;padding:4px 0}
 .cfecha .late{font-size:12px;color:var(--warn);font-weight:600}
-.ehead,.erow{display:grid;grid-template-columns:52px minmax(0,1fr) minmax(0,1.35fr) 46px;gap:8px;align-items:start}
+.ehead,.erow{display:grid;grid-template-columns:var(--uw,52px) minmax(0,1fr) minmax(0,1.35fr) 44px;gap:8px;align-items:start}
 .ehead{font-size:10.5px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.09em;padding:0 2px 6px}
 .ehead span:last-child{text-align:center}
 .eitem{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 10px 9px;margin-bottom:8px}
 .eitem.err{border-color:var(--bad)}.eitem.warn{border-color:var(--warn)}
-.erow .u{font-family:var(--display);font-size:20px;font-weight:700;padding-top:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.erow .u{font-family:var(--display);font-size:19px;font-weight:700;padding-top:10px;line-height:1.1;overflow-wrap:anywhere}
 .efield{position:relative}
-.efield input{width:100%;font-family:var(--display);font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;padding:9px 30px 9px 10px;border:1.5px solid var(--border2);border-radius:9px;background:var(--bg2);color:var(--text);outline:none}
+.efield input{width:100%;font-family:var(--display);font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;padding:9px 8px;border:1.5px solid var(--border2);border-radius:9px;background:var(--bg2);color:var(--text);outline:none}
 .efield input:focus{border-color:var(--accent);background:var(--surface)}
-.efield em{position:absolute;right:9px;top:13px;font-style:normal;font-size:12px;color:var(--text3);pointer-events:none}
 .ehint{font-size:11.5px;color:var(--text3);margin-top:4px;line-height:1.35;font-variant-numeric:tabular-nums}
 .ehint b{font-weight:600;color:var(--text2);white-space:nowrap}.ehint b.neg{color:var(--bad)}.ehint b.big{color:var(--warn)}
 .etank{display:grid;place-items:center;padding-top:6px;cursor:pointer;margin:0}
@@ -3907,8 +3906,15 @@ function renderCargaEntry(opts){
   const hoy=hoyLocal();
   h+=`<div class="cfecha"><label for="cg-fecha">Fecha</label>${ST.cargaFecha!==hoy?'<span class="late">Captura atrasada</span>':''}
     <input type="date" id="cg-fecha" value="${ST.cargaFecha}" max="${hoy}" onchange="ST.cargaFecha=this.value||hoyLocal();render()"></div>`;
-  h+=`<div class="ehead"><span>Unidad</span><span>Litros</span><span>Odómetro</span><span>Lleno</span></div>`;
+  // La columna de unidad se ajusta al nombre más largo del lote ("ECO 21",
+  // "768 / 776"): con ancho fijo se cortaban a "ECO…". Lotes de números de 3
+  // dígitos se quedan en 52 px; el tope deja espacio a litros y odómetro.
+  const maxLen=Math.max(...buses.map(b=>String(b.name).length));
+  const uw=Math.min(76,Math.max(52,maxLen*10+4));
+  h+=`<div style="--uw:${uw}px">`;
+  h+=`<div class="ehead"><span>Unidad</span><span>Litros</span><span>Odómetro (km)</span><span>Lleno</span></div>`;
   buses.forEach((b,i)=>{ h+=cargaEntryRow(b,i,i===buses.length-1); });
+  h+=`</div>`;
   h+=`</div>`;
   const lbl = ST.saving ? '<span class="spinner"></span>Guardando…'
             : warnMode ? 'Guardar de todos modos'
@@ -3922,9 +3928,9 @@ function cargaEntryRow(b,i,isLast){
   return `<div class="eitem${err?' err':warn?' warn':''}"><div class="erow">
     <div class="u num" title="${escHtml(b.name)}">${escHtml(b.name)}</div>
     <div class="efield"><input id="cg-l-${i}" type="text" inputmode="decimal" enterkeyhint="next" autocomplete="off" placeholder="0" aria-label="Litros unidad ${escHtml(b.name)}"
-      value="${escHtml(d.l)}" oninput="cargaInput(${i},'l',this.value)" onkeydown="cargaKey(event,${i},'l')"><em>L</em></div>
+      value="${escHtml(d.l)}" oninput="cargaInput(${i},'l',this.value)" onkeydown="cargaKey(event,${i},'l')"></div>
     <div class="efield"><input id="cg-o-${i}" type="text" inputmode="numeric" enterkeyhint="${isLast?'done':'next'}" autocomplete="off" placeholder="${b.km?fmt(b.km):'0'}" aria-label="Odómetro unidad ${escHtml(b.name)}"
-      value="${escHtml(d.o)}" oninput="cargaInput(${i},'o',this.value)" onkeydown="cargaKey(event,${i},'o')"><em>km</em>
+      value="${escHtml(d.o)}" oninput="cargaInput(${i},'o',this.value)" onkeydown="cargaKey(event,${i},'o')">
       <div class="ehint" id="cg-h-${i}">${cargaHint(b,d.o)}</div></div>
     <label class="etank"><input type="checkbox" ${d.full?'checked':''} onchange="cargaInput(${i},'full',this.checked)"><span>lleno</span></label>
   </div>${err?`<div class="emsg err">${m.err.join('<br>')}</div>`:warn?`<div class="emsg warn">${m.warn.map(w=>'⚠ '+w.msg).join('<br>')}</div>`:''}</div>`;
