@@ -179,7 +179,9 @@ async function dbUploadChequeoPhoto(chequeoId, slot, file){
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
-function today(){ return new Date().toISOString().slice(0,10); }
+// Fecha LOCAL del teléfono. Antes era toISOString() (UTC): después de las 6 pm
+// en México el chequeo y sus golpes quedaban fechados "mañana".
+function today(){ const d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
 function escHtml(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function authCities(){ return ST.auth==='all'?null:ST.auth.split(','); }
 function cityBuses(){ const c=authCities(); return ST.buses.filter(b=>!c||c.includes(b.city)); }

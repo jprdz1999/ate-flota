@@ -449,6 +449,11 @@ body{background:var(--bg);color:var(--text);font-size:15px}
 .cgi .l{font-weight:600}
 .cgi .r{text-align:right;color:var(--text2);font-variant-numeric:tabular-nums}
 .cgi .f{grid-column:2/-1;display:flex;gap:5px;flex-wrap:wrap}
+.cmes{display:flex;align-items:center;gap:6px}
+.cmes b{font-family:var(--display);font-size:16px;min-width:128px;text-align:center;white-space:nowrap}
+.cmes .btn2{min-width:38px;font-size:17px}.cmes .btn2:disabled{opacity:.35;cursor:default}
+.ctbl td{white-space:nowrap}
+@media(max-width:520px){.ctbl th,.ctbl td{padding-left:6px;padding-right:6px}.ctbl .hm{display:none}}
 .cap-in{width:84px;text-align:right;font-weight:600;border:1px solid var(--line);border-radius:7px;padding:3px 7px;background:var(--bg2);color:var(--text);font-family:inherit;font-size:14px}
 </style>
 </head>
@@ -605,7 +610,12 @@ let ST = {
   // cargaWarnSig: firma del borrador cuando se mostraron las advertencias; si
   // vuelven a tocar Guardar sin cambiar nada, eso es la confirmación.
   cargas:[], cargaSel:[], cargaIds:[], cargaDraft:{}, cargaFecha:'', cargaCity:'all', cargaQ:'',
-  cargaErr:'', cargaMsgs:{}, cargaWarnSig:null, focusId:null
+  cargaErr:'', cargaMsgs:{}, cargaWarnSig:null, focusId:null,
+  // Fase 2: pestañas del hub (registrar | consumo | revision), consumo mensual
+  // (vista cargas_mensual, se pide al abrir la pestaña) y cargas con
+  // advertencia sin revisar (solo admin).
+  cargaTab:'registrar', consumoMes:'', consumo:null, consumoErr:'', cargasRevision:[], revDelId:null,
+  cargasMesBus:{}   // bus_id -> litros del mes en curso (de cargas_mensual)
 };
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
@@ -825,7 +835,10 @@ function chqNormalize(s){
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
-function today(){ return new Date().toISOString().slice(0,10); }
+// Fecha LOCAL del dispositivo (YYYY-MM-DD). Antes era toISOString(), que es
+// UTC: después de las 6 pm en México ya daba "mañana" y servicios, checklists,
+// reparaciones y golpes quedaban fechados un día adelante.
+function today(){ return hoyLocal(); }
 function fmt(n){ return Math.round(n).toLocaleString('es-MX'); }
 function mxn(n){ return '$'+Math.round(n).toLocaleString('es-MX'); }
 // mxn() redondea a pesos enteros, que es lo que quiere el resto del Taller.
@@ -1203,6 +1216,7 @@ async function doLogout(){
   ST.auth=null; ST.role=null; ST.authEmail=null; ST.busId=null; ST.buses=[]; ST.logs=[]; ST.ordenes=[]; ST.adminFilter='all'; ST.view='home';
   ST.bases=[]; ST.operadores=[]; ST.operadorAlias=[]; ST.chequeos=[]; ST.chqSignedUrlCache={};
   ST.cargas=[]; ST.cargaSel=[]; ST.cargaIds=[]; ST.cargaDraft={}; ST.cargaMsgs={}; ST.cargaErr=''; ST.cargaWarnSig=null;
+  ST.cargaTab='registrar'; ST.consumo=null; ST.cargasRevision=[]; ST.cargasMesBus={};
   render();
 }
 
@@ -1342,6 +1356,7 @@ function renderHome(){
   } else if(insp){
     h+=`<div class="card2"><div class="between" style="margin-bottom:4px"><h2 class="h2">Pendientes</h2><button class="btn2 sm ghost" onclick="ST.chqHubTab='alertas';navigate('/chequeos')">Ver</button></div><div class="muted small">${insp} pendiente(s) en la flota.</div></div>`;
   }
+  h+=renderHomeCombustible(buses,isAdmin);
   h+=`<div class="card2"><h2 class="h2" style="margin-bottom:10px">Buscar unidad</h2><div class="search" style="margin:0"><span style="color:var(--text3);display:flex">${IC.search}</span><input inputmode="search" placeholder="Número de unidad…" onkeydown="if(event.key==='Enter'){ST.fleetQuery=this.value;ST.fleetChip='todas';navigate('/unidades')}"></div></div>`;
   h+=`</div></div>`;
   return h;
@@ -1621,6 +1636,12 @@ function resumenAlerts(bus){
     else if(al.remaining<=1000) out.push({title:`${svc.label} por vencer`, desc:`Faltan ${fmt(al.remaining)} km.`, cta:'Registrar', lvl:'amber', href:`/unidad/${uid_}/aceite/${tipoSlug}`});
   });
   Object.entries(bus.tires||{}).forEach(([pos,t])=>{ if(t && tireKM(t,bus.km)>=70000) out.push({title:`Llanta ${POS_NAMES[pos]||pos}`, desc:`${fmt(tireKM(t,bus.km))} km recorridos.`, cta:'Ver', lvl:'amber', href:`/unidad/${uid_}/mantenimiento`}); });
+  // Combustible. "Sin carga" es captura atrasada, no trabajo: va como 'data'
+  // (plegado en Pendientes y fuera del badge); en Inicio sale en su tarjeta.
+  const caida=rendCaida(bus);
+  if(caida) out.push({title:`Rendimiento cayó ${caida.pct}%`, desc:`${caida.kml.toFixed(2)} km/L contra ${caida.avg.toFixed(2)} de promedio.`, cta:'Ver', lvl:'amber', kind:'rend', href:`/unidad/${uid_}`});
+  const sc=sinCargaDias(bus);
+  if(sc!=null) out.push({title:`Sin carga en ${sc} días`, desc:'Registra la carga para mantener el odómetro al día.', cta:'Registrar', lvl:'data', kind:'carga', href:`/unidad/${uid_}/carga`});
   const pend=(bus.open_issues||[]).filter(i=>!i.resolved).length;
   if(pend) out.push({title:`${pend} acción(es) pendiente(s)`, desc:'Reportadas en inspección.', cta:'Ver', lvl:'amber', kind:'issues', href:`/unidad/${uid_}/inspecciones`});
   return out;
@@ -3673,29 +3694,41 @@ function exportCSV(){
 //   * Las validaciones son advertencias (se confirma y quedan en flags); solo
 //     bloquean litros <= 0 y odómetro vacío.
 // ═══════════════════════════════════════════════════════════════════════════
-const CARGA_VENTANA_DIAS=60;   // historial que se trae al abrir (basta para recencia y promedio)
+const CARGA_RECIENTES=20;      // por unidad (vista cargas_recientes): recencia, km/L e historial
 const CARGA_SALTO_KM=1500;
 const CARGA_REND_TOL=0.35;
 const CARGA_FLAG_LBL={km_menor:'Odómetro menor', salto_km:'Salto de km', exceso_litros:'Excede tanque', rendimiento_anomalo:'Rendimiento atípico'};
 
+// Se traen las últimas CARGA_RECIENTES cargas de cada unidad (no una ventana
+// de días): el tamaño queda acotado a unidades × 20 aunque el historial crezca,
+// y una unidad que cargó hace meses sigue mostrando su última carga. Los
+// litros del mes por unidad vienen ya sumados de cargas_mensual.
 // PostgREST corta en 1000 filas por respuesta: se pagina hasta traer todo.
 async function loadCargasData(){
   if(!sb) return {error:'Sin conexión'};
-  const desde=hoyLocal(new Date(Date.now()-CARGA_VENTANA_DIAS*86400000));
   const PAGE=1000; let all=[];
   for(let from=0;;from+=PAGE){
-    const {data,error}=await sb.from('cargas').select('*').gte('fecha',desde)
-      .order('fecha',{ascending:false}).order('odometro',{ascending:false}).order('id').range(from,from+PAGE-1);
+    const {data,error}=await sb.from('cargas_recientes').select('*')
+      .order('bus_id').order('rn').range(from,from+PAGE-1);
     if(error) return {error:error.message};
     all=all.concat(data||[]);
     if(!data || data.length<PAGE) break;
   }
   ST.cargas=all;
+  const {data:mes,error:eMes}=await sb.from('cargas_mensual').select('bus_id,litros').eq('mes',mesActual()+'-01');
+  if(eMes) return {error:eMes.message};
+  ST.cargasMesBus=Object.fromEntries((mes||[]).map(r=>[r.bus_id,Number(r.litros)]));
+  // Por revisar: con advertencia y sin revisar, de cualquier fecha (pocas filas).
+  if(ST.role==='admin'){
+    const {data:rev,error:e2}=await sb.from('cargas').select('*').neq('flags','{}').is('revisada_at',null)
+      .order('fecha',{ascending:false}).limit(500);
+    if(e2) return {error:e2.message};
+    ST.cargasRevision=rev||[];
+  }
   return {error:null};
 }
 
-// today() es la fecha UTC: después de las 6 pm en México ya da "mañana". Las
-// cargas se fechan y se cuentan en la fecha local del teléfono.
+// Fecha local (YYYY-MM-DD) de d o de ahora. today() es un alias.
 function hoyLocal(d){ d=d||new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
 function diasDesde(fecha){ return fecha?Math.max(0,Math.round((Date.parse(hoyLocal())-Date.parse(fecha))/86400000)):null; }
 function diasTxt(d){ return d==null?'—':d===0?'hoy':d===1?'ayer':`hace ${d} días`; }
@@ -3768,24 +3801,42 @@ function cargaHubBuses(){
   if(q) buses=buses.filter(b=>String(b.name).toLowerCase().includes(q));
   return buses;
 }
+// Pestañas: Registrar (lista + lote) · Consumo (mensual) · Por revisar (admin).
+// El filtro de ciudad es el mismo para las tres.
 function renderCargasHub(){
+  const isAdmin=ST.role==='admin';
+  if(ST.cargaTab==='revision'&&!isAdmin) ST.cargaTab='registrar';
   const scope=cityBuses().filter(b=>ST.cargaCity==='all'||b.city===ST.cargaCity);
-  const ids=new Set(scope.map(b=>b.id));
   const cities=[...new Set(cityBuses().map(b=>b.city))];
+  const nRev=revisionPendientes().length;
+  const T=(id,lbl)=>`<button class="tab${ST.cargaTab===id?' active':''}" onclick="cargaSetTab('${id}')">${lbl}</button>`;
+  let h=`<div class="hero"><h1 class="h1">Cargas</h1><span class="pill2">${scope.length} unidades</span></div>`;
+  h+=`<div class="tab-row">${T('registrar','Registrar')}${T('consumo','Consumo')}${isAdmin?T('revision',`Por revisar${nRev?` <em class="nbadge" style="position:static;display:inline-flex;margin-left:4px">${nRev}</em>`:''}`):''}</div>`;
+  if(cities.length>1){
+    const chip=(id,lbl)=>`<button class="chip${ST.cargaCity===id?' on':''}" onclick="ST.cargaCity='${id}';render()">${lbl}</button>`;
+    h+=`<div class="chips">${chip('all','Todas')}${cities.map(c=>chip(c,CITIES[c]?.name||c)).join('')}</div>`;
+  }
+  if(ST.cargaTab==='consumo')       h+=renderConsumo();
+  else if(ST.cargaTab==='revision') h+=renderRevision();
+  else                              h+=renderCargasRegistrar(scope);
+  return h;
+}
+function cargaSetTab(t){
+  ST.cargaTab=t; ST.revDelId=null;
+  if(t==='consumo' && !ST.consumo) loadConsumo();
+  render();
+}
+function renderCargasRegistrar(scope){
+  const ids=new Set(scope.map(b=>b.id));
   const hoy=hoyLocal();
   const deHoy=ST.cargas.filter(c=>c.fecha===hoy&&ids.has(c.bus_id));
-  const atrasadas=scope.filter(b=>{ const d=diasDesde(lastCarga(b.id)?.fecha); return d!=null&&d>=10; }).length;
-  let h=`<div class="hero"><div><div class="muted small">Ordenadas por días sin carga</div><h1 class="h1">Cargas</h1></div><span class="pill2">${scope.length} unidades</span></div>`;
-  h+=`<div class="cstrip">
+  const atrasadas=scope.filter(b=>sinCargaDias(b)!=null).length;
+  let h=`<div class="cstrip">
     <div><b class="num">${new Set(deHoy.map(c=>c.bus_id)).size}</b>cargadas hoy</div>
     <div><b class="num">${fmtL(deHoy.reduce((a,c)=>a+Number(c.litros),0))}</b>litros hoy</div>
     <div><b class="num" style="${atrasadas?'color:var(--warn)':''}">${atrasadas}</b>sin carga 10+ días</div></div>`;
   h+=`<div class="search"><span style="color:var(--text3);display:flex">${IC.search}</span>
     <input inputmode="search" placeholder="Buscar por número…" value="${escHtml(ST.cargaQ)}" oninput="ST.cargaQ=this.value;refreshCargaList()"></div>`;
-  if(cities.length>1){
-    const chip=(id,lbl)=>`<button class="chip${ST.cargaCity===id?' on':''}" onclick="ST.cargaCity='${id}';render()">${lbl}</button>`;
-    h+=`<div class="chips">${chip('all','Todas')}${cities.map(c=>chip(c,CITIES[c]?.name||c)).join('')}</div>`;
-  }
   h+=`<div id="cg-list">${renderCargaList()}</div>`;
   const n=ST.cargaSel.length;
   if(n){
@@ -3927,6 +3978,9 @@ async function doSaveCargas(){
   ST.saving=false;
   if(error){ ST.cargaErr='No se guardó ninguna carga: '+cargaErrMsg(error); render(); window.scrollTo(0,0); return; }
   ST.cargas=[...(data||[]),...ST.cargas];
+  if(ST.role==='admin') ST.cargasRevision=[...(data||[]).filter(c=>c.flags?.length),...ST.cargasRevision];
+  ST.consumo=null;   // el consumo del mes cambió; se vuelve a pedir al abrirlo
+  rows.forEach(r=>{ if(String(r.fecha).startsWith(mesActual())) ST.cargasMesBus[r.bus_id]=(ST.cargasMesBus[r.bus_id]||0)+r.litros; });
   // El trigger ya avanzó buses.km en la base; aquí solo se refleja en memoria.
   rows.forEach(r=>{ const b=ST.buses.find(x=>x.id===r.bus_id); if(b && r.odometro>(b.km||0)) b.km=r.odometro; });
   ST.cargaIds.forEach(id=>{ delete ST.cargaDraft[id]; });
@@ -3949,11 +4003,12 @@ function renderCargasCard(bus){
   const hist=busCargas(bus.id);
   let h=`<div class="card2"><div class="between" style="margin-bottom:4px"><h2 class="h2">Cargas</h2>
     <button class="btn2 sm ate" onclick="ST.cargaBack=null;navigate('/unidad/${uid_}/carga')">Registrar</button></div>`;
-  if(!hist.length) return h+`<div class="muted small">Sin cargas registradas en los últimos ${CARGA_VENTANA_DIAS} días.</div></div>`;
+  if(!hist.length) return h+`<div class="muted small">Sin cargas registradas.</div></div>`;
   const segs=rendimientoSegs(hist), avg=rendPromedio(segs);
   const kml=Object.fromEntries(segs.map(s=>[s.carga.id,s.kml]));
-  const mes=hoyLocal().slice(0,7);
-  const lMes=hist.filter(c=>String(c.fecha).startsWith(mes)).reduce((a,c)=>a+Number(c.litros),0);
+  // Del total mensual de la base (las cargas en memoria son solo las últimas 20).
+  const mes=mesActual();
+  const lMes=ST.cargasMesBus[bus.id] ?? hist.filter(c=>String(c.fecha).startsWith(mes)).reduce((a,c)=>a+Number(c.litros),0);
   const d=diasDesde(hist[0].fecha);
   h+=`<div class="cg-stats">
     <div><b class="num">${avg?avg.toFixed(2):'—'}</b><span>km/L promedio</span></div>
@@ -3964,7 +4019,7 @@ function renderCargasCard(bus){
     h+=`<div class="cgi"><span class="d">${fechaCorta(c.fecha)}</span>
       <span class="l num">${fmtL(c.litros)} L${c.tanque_lleno?'':' <span class="faint" style="font-weight:400">parcial</span>'}</span>
       <span class="r num">${fmt(c.odometro)} km${kml[c.id]?` · <b>${kml[c.id].toFixed(1)}</b> km/L`:''}</span>
-      ${fl.length?`<span class="f">${fl.map(f=>`<span class="badge b-warn">${CARGA_FLAG_LBL[f]||escHtml(f)}</span>`).join('')}</span>`:''}</div>`;
+      ${fl.length?`<span class="f">${fl.map(f=>`<span class="badge ${c.revisada_at?'b-none':'b-warn'}" title="${c.revisada_at?'Revisada':'Sin revisar'}">${c.revisada_at?'✓ ':''}${CARGA_FLAG_LBL[f]||escHtml(f)}</span>`).join('')}</span>`:''}</div>`;
   });
   if(!avg) h+=`<div class="small faint" style="padding-top:6px">El km/L aparece con dos cargas de tanque lleno.</div>`;
   return h+`</div>`;
@@ -3978,6 +4033,184 @@ async function doSaveCapacidad(id,val){
   const {error}=await dbUpdateBus(id,{capacidad_tanque:n});
   if(error){ bus.capacidad_tanque=prev; showToast('No se pudo guardar la capacidad.','error'); return; }
   showToast(n==null?'Capacidad borrada':'Capacidad guardada');
+}
+
+// ── Fase 2: alertas de combustible ──
+const CARGA_SIN_DIAS=10, CARGA_CAIDA=0.20;
+// Días sin carga cuando ya son 10+; null si no aplica. Una unidad que nunca ha
+// cargado NO alerta: mientras se adopta el módulo sería toda la flota.
+function sinCargaDias(bus){ const d=diasDesde(lastCarga(bus.id)?.fecha); return d!=null&&d>=CARGA_SIN_DIAS?d:null; }
+// Último segmento lleno-a-lleno contra el promedio de los (hasta 5) anteriores.
+// Pide al menos 2 segmentos previos para que el promedio signifique algo.
+function rendCaida(bus){
+  const segs=rendimientoSegs(busCargas(bus.id));
+  if(segs.length<3) return null;
+  const last=segs[segs.length-1], avg=rendPromedio(segs.slice(0,-1));
+  if(!avg || last.kml>=avg*(1-CARGA_CAIDA)) return null;
+  return {kml:last.kml, avg, pct:Math.round((1-last.kml/avg)*100), fecha:last.carga.fecha};
+}
+function revisionPendientes(){
+  const ids=new Set(cityBuses().map(b=>b.id));
+  return ST.cargasRevision.filter(c=>ids.has(c.bus_id)&&!c.revisada_at);
+}
+// Tarjeta de Inicio. No aparece si en este alcance nadie usa Cargas todavía.
+function renderHomeCombustible(buses,isAdmin){
+  const ids=new Set(buses.map(b=>b.id));
+  const rev=isAdmin?revisionPendientes().filter(c=>ids.has(c.bus_id)).length:0;
+  if(!rev && !ST.cargas.some(c=>ids.has(c.bus_id))) return '';
+  const sin=buses.map(b=>({b,d:sinCargaDias(b)})).filter(x=>x.d!=null).sort((a,b)=>b.d-a.d||cmpUnidad(a.b,b.b));
+  const caidas=buses.map(b=>({b,c:rendCaida(b)})).filter(x=>x.c).sort((a,b)=>b.c.pct-a.c.pct);
+  let h=`<div class="card2"><div class="between" style="margin-bottom:4px"><h2 class="h2">Combustible</h2><button class="btn2 sm ghost" onclick="ST.cargaTab='registrar';navigate('/cargas')">Cargas</button></div>`;
+  if(rev) h+=`<button class="alert2" onclick="ST.cargaTab='revision';navigate('/cargas')"><span class="sev amber"></span><span class="u num">${rev}</span><span class="t"><b>Cargas por revisar</b><span>Guardadas con advertencia</span></span><span class="chev">›</span></button>`;
+  caidas.slice(0,3).forEach(({b,c})=>{ h+=`<button class="alert2" data-id="${escHtml(b.id)}" onclick="selectBus(this.dataset.id)"><span class="sev amber"></span><span class="u num">${escHtml(b.name)}</span><span class="t"><b>Rendimiento cayó ${c.pct}%</b><span>${c.kml.toFixed(2)} km/L · promedio ${c.avg.toFixed(2)}</span></span><span class="chev">›</span></button>`; });
+  if(caidas.length>3) h+=`<div class="small faint" style="padding:6px 4px">+${caidas.length-3} unidades más con rendimiento bajo</div>`;
+  if(sin.length) h+=`<button class="alert2" onclick="ST.cargaTab='registrar';navigate('/cargas')"><span class="sev amber"></span><span class="u num">${sin.length}</span><span class="t"><b>Sin carga en 10+ días</b><span>${sin.slice(0,6).map(x=>escHtml(x.b.name)).join(', ')}${sin.length>6?'…':''}</span></span><span class="chev">›</span></button>`;
+  if(!rev&&!caidas.length&&!sin.length) h+=`<div class="muted small">Cargas al corriente y rendimiento normal.</div>`;
+  return h+`</div>`;
+}
+
+// ── Fase 2: consumo mensual (vista cargas_mensual; el km/L es de los
+// segmentos lleno-a-lleno que cierran en ese mes) ──
+function mesActual(){ return hoyLocal().slice(0,7); }
+function mesMas(m,n){ const [y,mm]=m.split('-').map(Number); const d=new Date(y,mm-1+n,1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
+function mesLargo(m){ const [y,mm]=m.split('-').map(Number); const s=new Date(y,mm-1,1).toLocaleDateString('es-MX',{month:'long',year:'numeric'}); return s.charAt(0).toUpperCase()+s.slice(1); }
+async function loadConsumo(){
+  if(!sb||ST.consumoLoading) return;
+  if(!ST.consumoMes) ST.consumoMes=mesActual();
+  const m=ST.consumoMes;
+  ST.consumoLoading=true; ST.consumoErr='';
+  const {data,error}=await sb.from('cargas_mensual').select('*').in('mes',[m+'-01',mesMas(m,-1)+'-01']);
+  ST.consumoLoading=false;
+  if(error){ ST.consumoErr=error.message; ST.consumo=[]; }
+  else ST.consumo=data||[];
+  ST.consumoFor=m;
+  if(m!==ST.consumoMes) return loadConsumo();   // cambiaron de mes mientras cargaba
+  if(ST.view==='cargas'&&ST.cargaTab==='consumo') render();
+}
+function consumoMover(n){
+  const m=mesMas(ST.consumoMes||mesActual(),n);
+  if(m>mesActual()) return;
+  ST.consumoMes=m; ST.consumo=null; render(); loadConsumo();
+}
+function consumoRows(){
+  const m=ST.consumoMes||mesActual();
+  const allowed=new Map(cityBuses().filter(b=>ST.cargaCity==='all'||b.city===ST.cargaCity).map(b=>[b.id,b]));
+  const rows=(ST.consumo||[]).filter(r=>allowed.has(r.bus_id));
+  const prevKml=Object.fromEntries(rows.filter(r=>r.mes.startsWith(mesMas(m,-1))).map(r=>[r.bus_id,r.km_l!=null?Number(r.km_l):null]));
+  const cur=rows.filter(r=>r.mes.startsWith(m)).map(r=>({...r, bus:allowed.get(r.bus_id), litros:Number(r.litros), km:r.km!=null?Number(r.km):null,
+    litros_seg:r.litros_seg!=null?Number(r.litros_seg):null, km_l:r.km_l!=null?Number(r.km_l):null, prev_kml:prevKml[r.bus_id]??null}));
+  const prev=rows.filter(r=>r.mes.startsWith(mesMas(m,-1)));
+  return {m, cur, prev, nScope:allowed.size};
+}
+function kmlDe(rows){ const r=rows.filter(x=>x.km!=null&&x.litros_seg); const km=r.reduce((a,x)=>a+Number(x.km),0), l=r.reduce((a,x)=>a+Number(x.litros_seg),0); return km&&l?km/l:null; }
+function renderConsumo(){
+  const m=ST.consumoMes||mesActual();
+  let h=`<div class="between" style="margin-bottom:12px">
+    <div class="cmes"><button class="btn2 sm ghost" onclick="consumoMover(-1)" aria-label="Mes anterior">‹</button><b>${mesLargo(m)}</b><button class="btn2 sm ghost" onclick="consumoMover(1)" ${m>=mesActual()?'disabled':''} aria-label="Mes siguiente">›</button></div>
+    ${ST.consumoFor===m&&ST.consumo?.length?`<button class="btn2 sm" onclick="consumoCsv()" title="Descargar CSV">CSV ↓</button>`:''}</div>`;
+  if(ST.consumoErr) return h+`<div class="modal-err">No se pudo cargar el consumo: ${escHtml(ST.consumoErr)}</div>`;
+  if(!ST.consumo || ST.consumoFor!==m){ if(!ST.consumoLoading) loadConsumo(); return h+`<div class="skel skel-row"></div><div class="skel skel-row" style="margin-top:8px"></div><div class="skel skel-row" style="margin-top:8px"></div>`; }
+  const {cur,prev,nScope}=consumoRows();
+  const L=cur.reduce((a,r)=>a+r.litros,0), Lp=prev.reduce((a,r)=>a+Number(r.litros),0);
+  const n=cur.reduce((a,r)=>a+Number(r.cargas),0), flags=cur.reduce((a,r)=>a+Number(r.con_flags),0);
+  const kml=kmlDe(cur), kmlP=kmlDe(prev);
+  const esActual=m===mesActual();
+  const K=(cls,v,l,s)=>`<div class="kpi2 ${cls}" style="cursor:default"><span class="n num">${v}</span><span class="l">${l}</span><span class="s">${s}</span></div>`;
+  h+=`<div class="kpis">
+    ${K('blue',fmtL(L),esActual?'litros a la fecha':'litros',Lp?`mes anterior: ${fmtL(Lp)}`:'sin datos del mes anterior')}
+    ${K('',n,'cargas',`${cur.length} de ${nScope} unidades`)}
+    ${K(kml&&kmlP&&kml<kmlP*(1-CARGA_CAIDA)?'red':'',kml?kml.toFixed(2):'—','km/L',kml&&kmlP?`${kml>=kmlP?'+':'−'}${Math.abs(Math.round((kml/kmlP-1)*100))}% vs mes anterior`:'tanque lleno a lleno')}
+    ${K(flags?'amber':'',flags,'con advertencia',flags?'cargas señaladas':'ninguna señalada')}
+  </div>`;
+  if(!cur.length) return h+`<div class="empty-state">Sin cargas en ${mesLargo(m).toLowerCase()}.</div>`;
+  // Por ciudad, cuando se ven varias.
+  const cities=[...new Set(cur.map(r=>r.city))];
+  if(cities.length>1){
+    h+=`<div class="card2" style="margin-bottom:12px;overflow-x:auto"><h2 class="h2" style="margin-bottom:8px">Por ciudad</h2><table class="rpt-table ctbl"><thead><tr><th>Ciudad</th><th class="hm" style="text-align:right">Unidades</th><th style="text-align:right">Cargas</th><th style="text-align:right">Litros</th><th style="text-align:right">km/L</th></tr></thead><tbody>`;
+    cities.map(c=>({c,rows:cur.filter(r=>r.city===c)})).sort((a,b)=>b.rows.reduce((s,r)=>s+r.litros,0)-a.rows.reduce((s,r)=>s+r.litros,0)).forEach(({c,rows})=>{
+      const k=kmlDe(rows);
+      h+=`<tr><td>${CITIES[c]?.name||c}</td><td style="text-align:right" class="num hm">${rows.length}</td><td style="text-align:right" class="num">${rows.reduce((s,r)=>s+Number(r.cargas),0)}</td><td style="text-align:right" class="num">${fmtL(rows.reduce((s,r)=>s+r.litros,0))}</td><td style="text-align:right" class="num">${k?k.toFixed(2):'—'}</td></tr>`;
+    });
+    h+=`</tbody></table></div>`;
+  }
+  // Por unidad, más litros primero.
+  h+=`<div class="card2" style="overflow-x:auto"><h2 class="h2" style="margin-bottom:8px">Por unidad</h2><table class="rpt-table ctbl"><thead><tr><th>Unidad</th><th style="text-align:right">Cargas</th><th style="text-align:right">Litros</th><th class="hm" style="text-align:right">km</th><th style="text-align:right">km/L</th><th style="text-align:right">vs ant.</th></tr></thead><tbody>`;
+  cur.sort((a,b)=>b.litros-a.litros||cmpUnidad(a.bus,b.bus)).forEach(r=>{
+    const dl=r.km_l!=null&&r.prev_kml?(r.km_l/r.prev_kml-1):null;
+    h+=`<tr data-id="${escHtml(r.bus_id)}" onclick="selectBus(this.dataset.id)" style="cursor:pointer">
+      <td><b class="num">${escHtml(r.bus.name)}</b>${r.con_flags?` <span class="badge b-warn" title="Cargas con advertencia">${r.con_flags}</span>`:''}</td>
+      <td style="text-align:right" class="num">${r.cargas}</td>
+      <td style="text-align:right" class="num">${fmtL(r.litros)}</td>
+      <td style="text-align:right" class="num hm">${r.km!=null?fmt(r.km):'—'}</td>
+      <td style="text-align:right" class="num"><b>${r.km_l!=null?r.km_l.toFixed(2):'—'}</b></td>
+      <td style="text-align:right${dl!=null&&dl<-CARGA_CAIDA?';color:var(--bad);font-weight:600':''}" class="num">${dl==null?'—':`${dl>=0?'+':'−'}${Math.abs(Math.round(dl*100))}%`}</td></tr>`;
+  });
+  h+=`</tbody></table>`;
+  if(cur.some(r=>r.km_l==null)) h+=`<div class="small faint" style="padding-top:8px">"—" en km/L: la unidad aún no tiene dos cargas de tanque lleno que cierren en este mes.</div>`;
+  return h+`</div>`;
+}
+function consumoCsv(){
+  const {m,cur}=consumoRows();
+  const q=s=>`"${String(s??'').replace(/"/g,'""')}"`;
+  const lines=['Mes,Unidad,Cliente,Ciudad,Cargas,Litros,Km (lleno a lleno),Km/L,Cargas con advertencia'];
+  cur.sort((a,b)=>cmpUnidad(a.bus,b.bus)).forEach(r=>lines.push([m,q(r.bus.name),q(r.bus.client),q(CITIES[r.city]?.name||r.city),r.cargas,r.litros,r.km??'',r.km_l??'',r.con_flags].join(',')));
+  const blob=new Blob([String.fromCharCode(0xFEFF)+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob), a=document.createElement('a');
+  a.href=url; a.download=`consumo_combustible_${m}.csv`; a.click(); URL.revokeObjectURL(url);
+}
+
+// ── Fase 2: revisión de cargas con advertencia (admin) ──
+function renderRevision(){
+  const ids=new Set(cityBuses().filter(b=>ST.cargaCity==='all'||b.city===ST.cargaCity).map(b=>b.id));
+  const list=revisionPendientes().filter(c=>ids.has(c.bus_id)).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha)));
+  if(!list.length) return `<div class="empty-state">Sin cargas por revisar.</div>`;
+  let h=`<div class="small faint" style="margin:0 2px 10px">Cargas guardadas con advertencia. Márcalas correctas o elimínalas. Eliminar una carga no regresa el odómetro: si la lectura estaba mal, usa Ajustar odómetro.</div>`;
+  list.forEach(c=>{
+    const b=ST.buses.find(x=>x.id===c.bus_id);
+    const odoFlag=(c.flags||[]).some(f=>f==='km_menor'||f==='salto_km');
+    h+=`<div class="card2" style="margin-bottom:10px">
+      <div class="between" style="align-items:flex-start">
+        <div><span class="num" style="font-size:22px;font-weight:700">${b?escHtml(b.name):'—'}</span>
+          <div class="small muted">${fechaCorta(c.fecha)} · ${escHtml((c.usuario_email||'—').split('@')[0])}</div></div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end">${(c.flags||[]).map(f=>`<span class="badge b-warn">${CARGA_FLAG_LBL[f]||escHtml(f)}</span>`).join('')}</div>
+      </div>
+      <div class="kv"><span>Litros</span><b class="num">${fmtL(c.litros)} L${c.tanque_lleno?'':' (parcial)'}${b?.capacidad_tanque?` <span class="faint" style="font-weight:400">de ${fmtL(b.capacidad_tanque)}</span>`:''}</b></div>
+      <div class="kv"><span>Odómetro capturado</span><b class="num">${fmt(c.odometro)} km</b></div>
+      ${b?`<div class="kv"><span>Odómetro actual de la unidad</span><b class="num">${b.km?fmt(b.km)+' km':'—'}</b></div>`:''}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        <button class="btn2 sm ate" onclick="doRevisarCarga('${c.id}')">Correcta</button>
+        ${odoFlag&&b?`<button class="btn2 sm" data-id="${escHtml(b.id)}" onclick="navigate('/unidad/'+encodeURIComponent(this.dataset.id)+'/odometro')">Ajustar odómetro</button>`:''}
+        <button class="btn2 sm ghost" style="color:var(--red-dark)" onclick="doEliminarCarga('${c.id}')">${ST.revDelId===c.id?'¿Eliminar? Toca otra vez':'Eliminar'}</button>
+      </div></div>`;
+  });
+  return h;
+}
+async function doRevisarCarga(id){
+  if(ST.saving) return;
+  ST.saving=true;
+  const patch={revisada_at:new Date().toISOString(), revisada_por:ST.authEmail};
+  const {data,error}=await sb.from('cargas').update(patch).eq('id',id).select('id');
+  ST.saving=false;
+  // Sin error pero 0 filas = el RLS no dejó (no es admin de esa ciudad).
+  if(error||!data?.length){ showToast('No se pudo marcar como revisada.','error'); return; }
+  [ST.cargasRevision,ST.cargas].forEach(arr=>{ const c=arr.find(x=>x.id===id); if(c) Object.assign(c,patch); });
+  showToast('Carga revisada');
+}
+// Dos toques en vez de confirm(): el diálogo nativo bloquea en algunas PWA.
+async function doEliminarCarga(id){
+  if(ST.revDelId!==id){ ST.revDelId=id; render(); return; }
+  if(ST.saving) return;
+  ST.saving=true; ST.revDelId=null;
+  const {data,error}=await sb.from('cargas').delete().eq('id',id).select('id');
+  ST.saving=false;
+  if(error||!data?.length){ showToast('No se pudo eliminar la carga.','error'); return; }
+  const del=ST.cargas.find(c=>c.id===id)||ST.cargasRevision.find(c=>c.id===id);
+  if(del && String(del.fecha).startsWith(mesActual()) && ST.cargasMesBus[del.bus_id]!=null)
+    ST.cargasMesBus[del.bus_id]=Math.max(0,ST.cargasMesBus[del.bus_id]-Number(del.litros));
+  ST.cargasRevision=ST.cargasRevision.filter(c=>c.id!==id);
+  ST.cargas=ST.cargas.filter(c=>c.id!==id);
+  ST.consumo=null;
+  showToast('Carga eliminada');
 }
 
 // ─── ROUTER (History API) ────────────────────────────────────────────────────
@@ -4101,7 +4334,7 @@ async function refreshData(force){
 }
 // Firma barata de lo que se pinta: si no cambia, no vale la pena repintar.
 function dataSig(){
-  return ST.logs.length+'|'+ST.chequeos.length+'|'+ST.danos.length+'|'+ST.cargas.length+'|'+
+  return ST.logs.length+'|'+ST.chequeos.length+'|'+ST.danos.length+'|'+ST.cargas.length+'|'+ST.cargasRevision.length+'|'+
     ST.ordenes.map(o=>o.id+':'+o.status).join(',')+'|'+
     ST.buses.map(b=>b.id+':'+(b.km||0)+':'+((b.open_issues||[]).filter(i=>!i.resolved).length)).join(',');
 }

@@ -62,42 +62,69 @@ create trigger cargas_bump_bus_km after insert on cargas
 
 
 -- ═════════════════════════════════════════════════════════════════════════════
--- FASE 2 — DISEÑO DE CONSULTAS (no aplicado todavía)
+-- FASE 2 — consumo, rendimiento y revisión de flags. Aplicada vía el MCP de
+-- Supabase el 2026-10-06 (migración cargas_fase2).
 -- ═════════════════════════════════════════════════════════════════════════════
---
+
+-- Revisión de cargas con advertencia (solo admin: cargas_update ya es admin-only).
+alter table cargas add column if not exists revisada_por text,
+                   add column if not exists revisada_at timestamptz;
+create index if not exists cargas_flags_pend_idx on cargas (fecha desc)
+  where flags <> '{}' and revisada_at is null;
+
 -- Rendimiento (km/L), método tanque lleno a tanque lleno. Un segmento va de una
 -- carga llena a la siguiente carga llena: km = diferencia de odómetros; litros =
 -- TODO lo que entró después de la primera llena hasta la segunda inclusive (las
 -- cargas parciales intermedias sí suman litros — si se descartaran, el km/L
--- saldría inflado). Las parciales no abren ni cierran segmento.
---
--- create view cargas_rendimiento with (security_invoker = true) as
--- with llenas as (
---   select id, bus_id, fecha, odometro,
---          lag(odometro) over (partition by bus_id order by odometro, created_at) as odo_ini
---   from cargas where tanque_lleno
--- )
--- select l.id as carga_id, l.bus_id, l.fecha,
---        l.odometro - l.odo_ini as km,
---        s.litros,
---        round((l.odometro - l.odo_ini) / nullif(s.litros, 0), 2) as km_l
--- from llenas l
--- cross join lateral (
---   select sum(c.litros) as litros from cargas c
---   where c.bus_id = l.bus_id and c.odometro > l.odo_ini and c.odometro <= l.odometro
--- ) s
--- where l.odo_ini is not null and l.odometro > l.odo_ini;
+-- saldría inflado). Las parciales no abren ni cierran segmento. El segmento se
+-- fecha con la carga llena que lo cierra.
+-- security_invoker: la vista respeta el RLS de cargas/buses (alcance por ciudad).
 -- (La app hace este mismo cálculo en JS — rendimientoSegs() en index.html.)
---
--- Consumo por unidad / ciudad / mes (sin precios: litros):
---   select date_trunc('month', c.fecha)::date as mes, b.city, c.bus_id,
---          sum(c.litros) as litros, count(*) as cargas
---   from cargas c join buses b on b.id = c.bus_id
---   group by 1, 2, rollup(3);
---
--- Alertas de Inicio:
---   * "Sin carga en 10+ días": buses sin cargas con fecha >= current_date - 10.
---   * "Rendimiento cayó >20%": último km_l de cargas_rendimiento < 0.8 × promedio
---     de los 5 segmentos anteriores de la misma unidad.
---   * "Cargas con flags" (admins): select * from cargas where flags <> '{}'
---     order by fecha desc.
+create view cargas_rendimiento with (security_invoker = true) as
+with llenas as (
+  select id, bus_id, fecha, odometro,
+         lag(odometro) over (partition by bus_id order by odometro, created_at) as odo_ini
+  from cargas where tanque_lleno
+)
+select l.id as carga_id, l.bus_id, l.fecha,
+       l.odometro - l.odo_ini as km,
+       s.litros,
+       round((l.odometro - l.odo_ini) / nullif(s.litros, 0), 2) as km_l
+from llenas l
+cross join lateral (
+  select sum(c.litros) as litros from cargas c
+  where c.bus_id = l.bus_id and c.odometro > l.odo_ini and c.odometro <= l.odometro
+) s
+where l.odo_ini is not null and l.odometro > l.odo_ini;
+
+-- Consumo por unidad y mes (sin precios: litros). km/km_l salen de los segmentos
+-- que CIERRAN en ese mes; una unidad con cargas pero sin dos llenas tiene km nulo.
+create view cargas_mensual with (security_invoker = true) as
+with base as (
+  select date_trunc('month', c.fecha)::date as mes, c.bus_id,
+         sum(c.litros) as litros, count(*) as cargas,
+         count(*) filter (where c.flags <> '{}') as con_flags
+  from cargas c group by 1, 2
+), rend as (
+  select date_trunc('month', fecha)::date as mes, bus_id,
+         sum(km) as km, sum(litros) as litros_seg
+  from cargas_rendimiento group by 1, 2
+)
+select b.mes, b.bus_id, bu.city, b.litros, b.cargas, b.con_flags,
+       r.km, r.litros_seg, round(r.km / nullif(r.litros_seg, 0), 2) as km_l
+from base b
+join buses bu on bu.id = b.bus_id
+left join rend r on r.mes = b.mes and r.bus_id = b.bus_id;
+
+-- ═════════════════════════════════════════════════════════════════════════════
+-- Carga liviana (2026-10-06, migración cargas_recientes). La app ya no baja una
+-- ventana de 60 días de TODAS las cargas: baja las últimas 20 por unidad (tope
+-- unidades × 20 filas sin importar cuánto historial haya) y los litros del mes
+-- por unidad desde cargas_mensual.
+-- ═════════════════════════════════════════════════════════════════════════════
+create view cargas_recientes with (security_invoker = true) as
+select * from (
+  select c.*, row_number() over (partition by c.bus_id order by c.fecha desc, c.odometro desc, c.created_at desc) as rn
+  from cargas c
+) x
+where rn <= 20;
