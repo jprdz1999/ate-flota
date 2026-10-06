@@ -385,6 +385,71 @@ body{background:var(--bg);color:var(--text);font-size:15px}
 .utab{font-size:13.5px}
 .dash .two-col{grid-template-columns:minmax(0,1fr)}
 .dash .tire-wrap{max-width:260px}
+/* ── Cargas de combustible ──
+   Lista: la franja izquierda (casilla) selecciona; el resto del renglón abre la
+   captura de esa sola unidad. Los días sin carga son lo que más se lee, así que
+   van grandes a la derecha. */
+.cstrip{display:flex;gap:18px;padding:2px 2px 14px;font-size:13px;color:var(--text2)}
+.cstrip b{font-family:var(--display);font-size:20px;color:var(--text);display:block;line-height:1.1}
+.clist{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.crow{display:flex;align-items:stretch;border-bottom:1px solid var(--line);position:relative}
+.crow:last-child{border-bottom:0}
+.crow.sel{background:var(--accent-soft)}
+.crow.sel::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--accent)}
+.crow.hoy{opacity:.55}
+.csel{width:58px;flex:0 0 auto;display:grid;place-items:center;background:none;border:0;cursor:pointer;padding:0}
+.cbox{width:24px;height:24px;border-radius:7px;border:2px solid var(--border2);display:grid;place-items:center;background:var(--surface);transition:background .1s}
+.cbox svg{width:15px;height:15px;stroke:var(--accent-ink);stroke-width:3;fill:none;opacity:0}
+.crow.sel .cbox{background:var(--accent);border-color:var(--accent)}.crow.sel .cbox svg{opacity:1}
+.cmain{flex:1;min-width:0;display:flex;align-items:center;gap:12px;padding:13px 14px 13px 0;background:none;border:0;text-align:left;cursor:pointer;font-family:inherit;color:var(--text)}
+.cmain .u{font-family:var(--display);font-size:22px;font-weight:700;min-width:52px;letter-spacing:-.01em}
+.cmain .t{flex:1;min-width:0;font-size:12.5px;color:var(--text2);line-height:1.35}
+.cmain .t span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cdays{text-align:right;flex:0 0 auto;line-height:1}
+.cdays b{font-family:var(--display);font-size:24px;font-weight:700;display:block}
+.cdays span{font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em}
+.cdays.warn b{color:var(--warn)}.cdays.none b{color:var(--text3);font-size:15px}.cdays.ok b{color:var(--ok);font-size:15px}
+.cfab{position:fixed;left:14px;right:14px;bottom:calc(74px + env(safe-area-inset-bottom));z-index:35}
+.cfab .btn-primary-lg{box-shadow:0 8px 24px rgba(0,0,0,.18)}
+@media(min-width:900px){.cfab{position:sticky;bottom:16px;left:auto;right:auto;margin-top:14px}}
+.cbar{display:flex;gap:10px;align-items:center}
+.cbar .btn-primary-lg{flex:1}
+.cbar .btn2{min-height:48px}
+/* Captura en lote: un renglón compacto por unidad */
+.cfecha{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin-bottom:12px}
+.cfecha label{margin:0;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;color:var(--text2)}
+.cfecha input{flex:1;font-size:16px;border:0;background:none;color:var(--text);font-family:inherit;text-align:right;padding:4px 0}
+.cfecha .late{font-size:12px;color:var(--warn);font-weight:600}
+.ehead,.erow{display:grid;grid-template-columns:52px minmax(0,1fr) minmax(0,1.35fr) 46px;gap:8px;align-items:start}
+.ehead{font-size:10.5px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.09em;padding:0 2px 6px}
+.ehead span:last-child{text-align:center}
+.eitem{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 10px 9px;margin-bottom:8px}
+.eitem.err{border-color:var(--bad)}.eitem.warn{border-color:var(--warn)}
+.erow .u{font-family:var(--display);font-size:20px;font-weight:700;padding-top:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.efield{position:relative}
+.efield input{width:100%;font-family:var(--display);font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;padding:9px 30px 9px 10px;border:1.5px solid var(--border2);border-radius:9px;background:var(--bg2);color:var(--text);outline:none}
+.efield input:focus{border-color:var(--accent);background:var(--surface)}
+.efield em{position:absolute;right:9px;top:13px;font-style:normal;font-size:12px;color:var(--text3);pointer-events:none}
+.ehint{font-size:11.5px;color:var(--text3);margin-top:4px;line-height:1.35;font-variant-numeric:tabular-nums}
+.ehint b{font-weight:600;color:var(--text2);white-space:nowrap}.ehint b.neg{color:var(--bad)}.ehint b.big{color:var(--warn)}
+.etank{display:grid;place-items:center;padding-top:6px;cursor:pointer;margin:0}
+.etank input{width:26px;height:26px;accent-color:var(--accent);cursor:pointer;margin:0}
+.etank span{font-size:10px;color:var(--text3);margin-top:2px}
+.emsg{font-size:12.5px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);line-height:1.45}
+.emsg.err{color:var(--red-dark)}.emsg.warn{color:var(--amber-dark)}
+.ebanner{background:var(--amber-bg);color:var(--amber-dark);border-radius:10px;padding:10px 12px;font-size:13px;margin-bottom:10px;line-height:1.45}
+/* Historial de cargas en el dashboard de unidad */
+.cg-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:6px 0 10px}
+.cg-stats div{background:var(--surface-2);border-radius:9px;padding:8px 10px}
+.cg-stats b{font-family:var(--display);font-size:17px;display:block;line-height:1.15}
+.cg-stats span{font-size:11px;color:var(--text3)}
+.cgi{display:grid;grid-template-columns:auto 1fr auto;gap:2px 12px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px;align-items:baseline}
+.cgi:last-child{border-bottom:0}
+.cgi .d{color:var(--text3);font-size:12px;min-width:44px}
+.cgi .l{font-weight:600}
+.cgi .r{text-align:right;color:var(--text2);font-variant-numeric:tabular-nums}
+.cgi .f{grid-column:2/-1;display:flex;gap:5px;flex-wrap:wrap}
+.cap-in{width:84px;text-align:right;font-weight:600;border:1px solid var(--line);border-radius:7px;padding:3px 7px;background:var(--bg2);color:var(--text);font-family:inherit;font-size:14px}
 </style>
 </head>
 <body>
@@ -531,7 +596,16 @@ let ST = {
   pcVista:'ordenes', thQ:'',
   // Asignacion de una compra a stock: que orden se esta repartiendo, a que
   // unidades y por cuanto. asigMonto arranca en el saldo completo.
-  asigId:null, asigBusIds:[], asigQuery:'', asigMonto:'', asigErr:'', asigSaving:false
+  asigId:null, asigBusIds:[], asigQuery:'', asigMonto:'', asigErr:'', asigSaving:false,
+
+  // ─── Cargas de combustible ───
+  // cargaSel: unidades marcadas en la lista. cargaIds: las que están en la
+  // pantalla de captura (lote o una sola). cargaDraft[busId] = {l,o,full}: lo
+  // escrito vive aquí para que un re-render (errores, advertencias) no lo borre.
+  // cargaWarnSig: firma del borrador cuando se mostraron las advertencias; si
+  // vuelven a tocar Guardar sin cambiar nada, eso es la confirmación.
+  cargas:[], cargaSel:[], cargaIds:[], cargaDraft:{}, cargaFecha:'', cargaCity:'all', cargaQ:'',
+  cargaErr:'', cargaMsgs:{}, cargaWarnSig:null, focusId:null
 };
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
@@ -554,6 +628,7 @@ async function init(){
         const {error}=await loadFromSupabase(); if(error) console.error('Error cargando datos:', error);
         const {error:chqErr}=await loadChequeosData(); if(chqErr) console.error('Error cargando chequeos:', chqErr);
         const {error:ocErr}=await loadComprasData(); if(ocErr) console.error('Error cargando órdenes de compra:', ocErr);
+        const {error:cgErr}=await loadCargasData(); if(cgErr) console.error('Error cargando cargas:', cgErr);
       }
     }
   } catch(e){ console.error('Supabase unreachable:', e); }
@@ -1080,6 +1155,7 @@ function render(){
   document.querySelectorAll('.toast').forEach(t=>t.remove());
   if(ST.toast){ const t=document.createElement('div'); t.className='toast'+(ST.toastType==='error'?' error':''); t.textContent=ST.toast; document.body.appendChild(t); }
   if(ST.modal==='chqQr') chqRenderQR();
+  if(ST.focusId){ const el=document.getElementById(ST.focusId); ST.focusId=null; if(el){ el.focus(); el.select?.(); } }
 }
 function showToast(msg,type='success'){ ST.toast=msg; ST.toastType=type; render(); setTimeout(()=>{ ST.toast=null; ST.toastType=null; document.querySelectorAll('.toast').forEach(e=>e.remove()); },2500); }
 
@@ -1117,6 +1193,8 @@ async function doLogin(){
   if(loadErr){ ST.loginErr='Error al cargar datos. Intenta de nuevo.'; ST.auth=null; ST.role=null; ST.saving=false; render(); return; }
   const {error:chqErr}=await loadChequeosData();
   if(chqErr) console.error('Error cargando chequeos:', chqErr);
+  const {error:cgErr}=await loadCargasData();
+  if(cgErr) console.error('Error cargando cargas:', cgErr);
   render();
 }
 
@@ -1124,6 +1202,7 @@ async function doLogout(){
   await sb.auth.signOut();
   ST.auth=null; ST.role=null; ST.authEmail=null; ST.busId=null; ST.buses=[]; ST.logs=[]; ST.ordenes=[]; ST.adminFilter='all'; ST.view='home';
   ST.bases=[]; ST.operadores=[]; ST.operadorAlias=[]; ST.chequeos=[]; ST.chqSignedUrlCache={};
+  ST.cargas=[]; ST.cargaSel=[]; ST.cargaIds=[]; ST.cargaDraft={}; ST.cargaMsgs={}; ST.cargaErr=''; ST.cargaWarnSig=null;
   render();
 }
 
@@ -1132,6 +1211,7 @@ function renderApp(){
   // Rutas de unidad = pantalla completa con su propio header pegajoso.
   if(bus && ST.action) return shell(renderActionScreen(bus),{tabbar:false,narrow:true});
   if(bus)              return renderFichaScreen(bus);
+  if(ST.view==='cargas-reg') return shell(renderCargaEntry({title:'Registrar cargas',backTo:'/cargas'}),{tabbar:false,narrow:true});
   return renderHubShell();  // home / reportes / chequeos / compras
 }
 
@@ -1159,24 +1239,30 @@ const IC={
   user:'<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>',
   qr:'<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3M21 14v7h-4"/></svg>',
   trash:'<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
+  fuel:'<svg viewBox="0 0 24 24"><path d="M4 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16M3 21h13M7 7h5v4H7z"/><path d="M15 9h2a2 2 0 0 1 2 2v6a1.5 1.5 0 0 0 3 0V8l-3-3"/></svg>',
+  check:'<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
 };
 
 function navItems(){
   const pend=pendientesCount();
   const po=ST.role==='admin'?ST.ordenes.filter(o=>ocVisible(o)&&o.status==='pendiente').length:0;
+  // Taller es solo de admin (para los demás era una pantalla de "no tienes
+  // acceso"), así que en su lugar los supervisores ven Cargas sin pasar de 5 tabs.
   return [
     {v:'home',slug:'/',ic:IC.home,l:'Inicio'},
     {v:'fleet',slug:'/unidades',ic:IC.fleet,l:'Unidades'},
+    {v:'cargas',slug:'/cargas',ic:IC.fuel,l:'Cargas'},
     {v:'chequeos',slug:'/chequeos',ic:IC.insp,l:'Pendientes',b:pend},
-    {v:'compras',slug:'/compras',ic:IC.taller,l:'Taller',b:po},
+    ...(ST.role==='admin'?[{v:'compras',slug:'/compras',ic:IC.taller,l:'Taller',b:po}]:[]),
     {v:'report',slug:'/reportes',ic:IC.report,l:'Reportes'},
   ];
 }
 // Marco común: rail a la izquierda en escritorio, tabbar abajo en móvil.
 function shell(inner,opts){
   opts=opts||{};
-  const cur=ST.busId?'fleet':ST.view;
-  const nav=navItems().map(i=>`<button class="${cur===i.v?'on':''}" onclick="${i.v==='chequeos'?"ST.chqHubTab='alertas';":''}navigate('${i.slug}')">${i.ic}<span>${i.l}</span>${i.b?`<em class="nbadge">${i.b}</em>`:''}</button>`).join('');
+  const cur=ST.busId?'fleet':ST.view==='cargas-reg'?'cargas':ST.view;
+  const items=navItems();
+  const nav=items.map(i=>`<button class="${cur===i.v?'on':''}" onclick="${i.v==='chequeos'?"ST.chqHubTab='alertas';":''}navigate('${i.slug}')">${i.ic}<span>${i.l}</span>${i.b?`<em class="nbadge">${i.b}</em>`:''}</button>`).join('');
   const isAdmin=ST.role==='admin';
   let h=`<div class="shell"><aside class="rail">
     <div class="brand2"><i>A</i>ATE Flota</div>
@@ -1186,7 +1272,7 @@ function shell(inner,opts){
       <button class="railbtn" onclick="ST.modal='account';render()">${IC.user}<span>${escHtml((ST.authEmail||'Cuenta').split('@')[0])}</span></button>
     </div></aside>
     <div class="shellmain${opts.narrow?' narrow':''}">${inner}</div></div>`;
-  if(opts.tabbar!==false) h+=`<nav class="tabbar">${nav}</nav>`;
+  if(opts.tabbar!==false) h+=`<nav class="tabbar" style="grid-template-columns:repeat(${items.length},1fr)">${nav}</nav>`;
   return h;
 }
 
@@ -1201,6 +1287,7 @@ function renderHubShell(){
   else if(ST.view==='chequeos') h+=renderChqHub();
   else if(ST.view==='compras')  h+=(ST.role==='admin'?renderComprasHub():`<div class="empty-state">El taller (órdenes de compra) es solo para administradores.</div>`);
   else if(ST.view==='fleet')    h+=renderFleetHome();
+  else if(ST.view==='cargas')   h+=renderCargasHub();
   else                          h+=renderHome();
   h+=`</div>`;
   h=shell(h);
@@ -1363,6 +1450,7 @@ function renderDashboard(bus){
   alerts.forEach(a=>{ const open=a.href?`navigate('${a.href}')`:(a.js||''); R+=`<div class="pend"><span class="ic ${a.solid?'red':'amber'}">!</span><div style="flex:1;min-width:0"><b>${a.title}</b><div class="small muted">${a.desc}</div></div><button class="btn2 sm${a.solid?' ate':''}" onclick="${open.replace(/"/g,'&quot;')}">${a.cta}</button></div>`; });
   if(!alerts.length&&!pos.length) R+=`<div class="muted small">Nada pendiente. Unidad al día.</div>`;
   R+=`</div>`;
+  R+=renderCargasCard(bus);
   // Historial reciente: la misma bitácora unificada de taller (incluye órdenes
   // de compra) + checklists, que también son parte de la vida de la unidad.
   const recientes=reportRowsAll().filter(r=>r.busId===bus.id && r.tipoKey!=='km' && !(r.origen==='compra'&&r.pago==='rechazada'))
@@ -1381,6 +1469,9 @@ function renderDashboard(bus){
       <div class="kv"><span>Tipo</span><b>${tipo}</b></div>
       <div class="kv"><span>Ciudad</span><b>${CITIES[bus.city]?.name||bus.city}</b></div>
       <div class="kv"><span>Odómetro</span><b>${bus.km?fmt(bus.km)+' km':'Sin dato'}</b></div>
+      <div class="kv"><span>Tanque</span>${isAdmin
+        ?`<b><input class="cap-in num" type="number" inputmode="decimal" min="1" placeholder="—" value="${bus.capacidad_tanque??''}" data-id="${escHtml(bus.id)}" onchange="doSaveCapacidad(this.dataset.id,this.value)"> L</b>`
+        :`<b>${bus.capacidad_tanque?fmtL(bus.capacidad_tanque)+' L':'Sin dato'}</b>`}</div>
       <div class="kv"><span>Registros de taller</span><b>${tallerRows(bus.id).length}</b></div>
     </div>`;
   h+=`<div class="dash"><div class="stack">${L}</div><div class="stack">${R}</div></div>`;
@@ -1397,6 +1488,8 @@ function actionItems(bus){
   h+= esPasaje
     ? `<a class="action" href="/chequeo.html?unidad=${uid_}" target="_blank" rel="noopener" onclick="ST.modal=null;render()"><span class="ic ate">${IC.insp}</span><span class="tx"><b>Iniciar chequeo ↗</b><span>Fotos y golpes desde la liga de base</span></span></a>`
     : A(`navigate('/unidad/${uid_}/checklist-nuevo')`,IC.insp,'ate','Hacer checklist','Inspección con diagrama de golpes');
+  const ult=lastCarga(bus.id);
+  h+=A(`ST.cargaBack=null;navigate('/unidad/${uid_}/carga')`,IC.fuel,'','Registrar carga',ult?`Última ${diasTxt(diasDesde(ult.fecha))} · ${fmtL(ult.litros)} L`:'Litros y odómetro');
   h+=`<button class="action" onclick="ST.modal='actions-svc';render()"><span class="ic">${IC.oil}</span><span class="tx"><b>Completar servicio</b><span>Aceite de motor, transmisión o diferencial</span></span><span class="chev">›</span></button>`;
   h+=A(`navigate('/unidad/${uid_}/reparacion')`,IC.taller,'','Registrar reparación','Correctivo, directo al historial');
   h+=A(`ST.tirePrePos=null;ST.tirePreEvent=null;ST.modal='tire';render()`,IC.tire,'','Evento de llanta','Nueva, rotación, reencauche o baja');
@@ -1688,6 +1781,7 @@ function renderActionScreen(bus){
   const uid_=encodeURIComponent(bus.id);
   const A=ST.action;
   if(A==='golpes') return renderGolpes(bus);   // pantalla de consulta, sin barra de guardar
+  if(A==='carga')  return renderCargaEntry({title:'Registrar carga',backTo:'/unidad/'+uid_,bus});  // mismo componente que el lote
   let title='', body='', save='', backTo='/unidad/'+uid_;
   if(A==='aceite'){
     const svcType=ACEITE_SLUGS[ST.actionParam]||'svc';
@@ -3568,6 +3662,324 @@ function exportCSV(){
   URL.revokeObjectURL(url);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// CARGAS DE COMBUSTIBLE — el supervisor, parado en la bomba, captura litros +
+// odómetro. Sirve para dos cosas: mantener buses.km al día (sin eso las alertas
+// de aceite/llantas no funcionan) y ver consumo por unidad.
+//   * buses.km sigue siendo el ÚNICO odómetro vivo. La carga lo avanza en la
+//     base (trigger cargas_bump_bus_km, misma transacción) y solo si es mayor.
+//   * Cada carga guarda su propia lectura (odometro) para historial y km/L.
+//   * "Guardar todo" es UN insert de todas las filas: o entran todas o ninguna.
+//   * Las validaciones son advertencias (se confirma y quedan en flags); solo
+//     bloquean litros <= 0 y odómetro vacío.
+// ═══════════════════════════════════════════════════════════════════════════
+const CARGA_VENTANA_DIAS=60;   // historial que se trae al abrir (basta para recencia y promedio)
+const CARGA_SALTO_KM=1500;
+const CARGA_REND_TOL=0.35;
+const CARGA_FLAG_LBL={km_menor:'Odómetro menor', salto_km:'Salto de km', exceso_litros:'Excede tanque', rendimiento_anomalo:'Rendimiento atípico'};
+
+// PostgREST corta en 1000 filas por respuesta: se pagina hasta traer todo.
+async function loadCargasData(){
+  if(!sb) return {error:'Sin conexión'};
+  const desde=hoyLocal(new Date(Date.now()-CARGA_VENTANA_DIAS*86400000));
+  const PAGE=1000; let all=[];
+  for(let from=0;;from+=PAGE){
+    const {data,error}=await sb.from('cargas').select('*').gte('fecha',desde)
+      .order('fecha',{ascending:false}).order('odometro',{ascending:false}).order('id').range(from,from+PAGE-1);
+    if(error) return {error:error.message};
+    all=all.concat(data||[]);
+    if(!data || data.length<PAGE) break;
+  }
+  ST.cargas=all;
+  return {error:null};
+}
+
+// today() es la fecha UTC: después de las 6 pm en México ya da "mañana". Las
+// cargas se fechan y se cuentan en la fecha local del teléfono.
+function hoyLocal(d){ d=d||new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
+function diasDesde(fecha){ return fecha?Math.max(0,Math.round((Date.parse(hoyLocal())-Date.parse(fecha))/86400000)):null; }
+function diasTxt(d){ return d==null?'—':d===0?'hoy':d===1?'ayer':`hace ${d} días`; }
+function fechaCorta(f){ return new Date(f+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'short'}).replace('.',''); }
+function fmtL(n){ return Number(n||0).toLocaleString('es-MX',{maximumFractionDigits:1}); }
+function busCargas(busId){ return ST.cargas.filter(c=>c.bus_id===busId).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha))||b.odometro-a.odometro); }
+function lastCarga(busId){ return busCargas(busId)[0]||null; }
+function parseLitros(s){ const t=String(s??'').trim().replace(',','.'); if(!t) return null; const n=Number(t); return Number.isFinite(n)?n:NaN; }
+function parseOdo(s){ const t=String(s??'').replace(/[^\d]/g,''); return t?parseInt(t,10):null; }
+
+// Rendimiento tanque lleno a tanque lleno. Un segmento va de una carga llena a
+// la siguiente llena; las parciales no abren ni cierran segmento pero SÍ suman
+// sus litros al segmento donde caen (si se descartaran, el km/L saldría
+// inflado). Mismo cálculo que la vista de diseño en supabase_cargas.sql.
+function rendimientoSegs(cargas){
+  const asc=[...cargas].sort((a,b)=>a.odometro-b.odometro||String(a.created_at||'').localeCompare(String(b.created_at||'')));
+  const segs=[]; let prev=null, litros=0;
+  asc.forEach(c=>{
+    if(prev) litros+=Number(c.litros);
+    if(c.tanque_lleno){
+      if(prev && c.odometro>prev.odometro && litros>0) segs.push({carga:c, km:c.odometro-prev.odometro, litros, kml:(c.odometro-prev.odometro)/litros});
+      prev=c; litros=0;
+    }
+  });
+  return segs;
+}
+// Promedio móvil de los últimos 5 segmentos, ponderado (km totales / litros totales).
+function rendPromedio(segs){
+  const s=segs.slice(-5); if(!s.length) return null;
+  return s.reduce((a,x)=>a+x.km,0)/s.reduce((a,x)=>a+x.litros,0);
+}
+
+// ── Validación (advertencias que se confirman; solo dos errores duros) ──
+function cargaCheck(bus,d){
+  const err=[], warn=[];
+  const l=parseLitros(d.l), o=parseOdo(d.o);
+  if(l==null||Number.isNaN(l)||l<=0) err.push('Captura los litros (mayor a 0).');
+  if(o==null) err.push('Captura el odómetro.');
+  if(err.length) return {err,warn};
+  // "Última lectura" = buses.km, el odómetro vivo: puede venir de una carga, un
+  // checklist o un servicio. Es la misma referencia que el delta en pantalla.
+  const last=bus.km||0;
+  if(last>0 && o<last) warn.push({flag:'km_menor', msg:`El último registro es mayor (${fmt(last)} km), ¿seguro?`});
+  else if(last>0 && o-last>CARGA_SALTO_KM) warn.push({flag:'salto_km', msg:`Salto de ${fmt(o-last)} km desde la última lectura.`});
+  if(bus.capacidad_tanque && l>Number(bus.capacidad_tanque)) warn.push({flag:'exceso_litros', msg:`${fmtL(l)} L es más que la capacidad del tanque (${fmtL(bus.capacidad_tanque)} L).`});
+  if(d.full){
+    const hist=busCargas(bus.id);
+    const maxOdo=hist.reduce((m,c)=>Math.max(m,c.odometro),0);
+    // Solo con ≥3 llenas y si esta carga es la más reciente (una captura
+    // atrasada partiría un segmento existente y el km/L no significaría nada).
+    if(hist.filter(c=>c.tanque_lleno).length>=3 && o>maxOdo){
+      const avg=rendPromedio(rendimientoSegs(hist));
+      const nuevo=rendimientoSegs([...hist,{odometro:o,litros:l,tanque_lleno:true,created_at:'~nueva'}]).find(s=>s.carga.created_at==='~nueva');
+      if(avg && nuevo && Math.abs(nuevo.kml-avg)/avg>CARGA_REND_TOL)
+        warn.push({flag:'rendimiento_anomalo', msg:`Rendimiento de ${nuevo.kml.toFixed(2)} km/L contra un promedio de ${avg.toFixed(2)} km/L.`});
+    }
+  }
+  return {err,warn};
+}
+
+// ── Lista: más días sin carga primero (nunca cargadas hasta arriba) ──
+function cargaListOrder(buses){
+  return (buses||cityBuses()).map(b=>({b,d:diasDesde(lastCarga(b.id)?.fecha)}))
+    .sort((x,y)=>((y.d??Infinity)-(x.d??Infinity))||cmpUnidad(x.b,y.b)).map(x=>x.b.id);
+}
+function cargaHubBuses(){
+  let buses=cityBuses();
+  if(ST.cargaCity!=='all') buses=buses.filter(b=>b.city===ST.cargaCity);
+  const q=ST.cargaQ.trim().toLowerCase();
+  if(q) buses=buses.filter(b=>String(b.name).toLowerCase().includes(q));
+  return buses;
+}
+function renderCargasHub(){
+  const scope=cityBuses().filter(b=>ST.cargaCity==='all'||b.city===ST.cargaCity);
+  const ids=new Set(scope.map(b=>b.id));
+  const cities=[...new Set(cityBuses().map(b=>b.city))];
+  const hoy=hoyLocal();
+  const deHoy=ST.cargas.filter(c=>c.fecha===hoy&&ids.has(c.bus_id));
+  const atrasadas=scope.filter(b=>{ const d=diasDesde(lastCarga(b.id)?.fecha); return d!=null&&d>=10; }).length;
+  let h=`<div class="hero"><div><div class="muted small">Ordenadas por días sin carga</div><h1 class="h1">Cargas</h1></div><span class="pill2">${scope.length} unidades</span></div>`;
+  h+=`<div class="cstrip">
+    <div><b class="num">${new Set(deHoy.map(c=>c.bus_id)).size}</b>cargadas hoy</div>
+    <div><b class="num">${fmtL(deHoy.reduce((a,c)=>a+Number(c.litros),0))}</b>litros hoy</div>
+    <div><b class="num" style="${atrasadas?'color:var(--warn)':''}">${atrasadas}</b>sin carga 10+ días</div></div>`;
+  h+=`<div class="search"><span style="color:var(--text3);display:flex">${IC.search}</span>
+    <input inputmode="search" placeholder="Buscar por número…" value="${escHtml(ST.cargaQ)}" oninput="ST.cargaQ=this.value;refreshCargaList()"></div>`;
+  if(cities.length>1){
+    const chip=(id,lbl)=>`<button class="chip${ST.cargaCity===id?' on':''}" onclick="ST.cargaCity='${id}';render()">${lbl}</button>`;
+    h+=`<div class="chips">${chip('all','Todas')}${cities.map(c=>chip(c,CITIES[c]?.name||c)).join('')}</div>`;
+  }
+  h+=`<div id="cg-list">${renderCargaList()}</div>`;
+  const n=ST.cargaSel.length;
+  if(n){
+    h+=`<div style="height:64px"></div><div class="cfab cbar">
+      <button class="btn-primary-lg" onclick="navigate('/cargas/registrar')">Registrar ${n} unidad${n===1?'':'es'}</button>
+      <button class="btn2" onclick="ST.cargaSel=[];render()">Limpiar</button></div>`;
+  }
+  return h;
+}
+function renderCargaList(){
+  const ids=cargaListOrder(cargaHubBuses());
+  if(!ids.length) return `<div class="empty-state">Sin unidades para este filtro.</div>`;
+  const byId=new Map(ST.buses.map(b=>[b.id,b]));
+  const pend=ids.filter(id=>!ST.cargaSel.includes(id));
+  let h=`<div class="between" style="margin:0 2px 8px"><span class="small faint">Marca las que cargaste · toca una para capturarla sola</span>
+    ${pend.length?`<button class="btn2 sm ghost" onclick="cargaMarcar(true)">Marcar ${pend.length}</button>`:`<button class="btn2 sm ghost" onclick="cargaMarcar(false)">Desmarcar</button>`}</div>`;
+  h+=`<div class="clist">${ids.map(id=>cargaRowHTML(byId.get(id))).join('')}</div>`;
+  return h;
+}
+function cargaRowHTML(b){
+  const u=lastCarga(b.id), d=diasDesde(u?.fecha);
+  const sel=ST.cargaSel.includes(b.id);
+  const right = d==null ? `<b>—</b><span>nunca</span>`
+              : d===0   ? `<b>✓ Hoy</b><span>${fmtL(u.litros)} L</span>`
+              :           `<b class="num">${d}</b><span>${d===1?'día':'días'}</span>`;
+  const cls = d==null?'none':d===0?'ok':d>=10?'warn':'';
+  // Los días ya van grandes a la derecha; en 375 px el texto tiene que caber corto.
+  const l1 = u ? `${fmt(u.odometro)} km · ${fmtL(u.litros)} L${u.tanque_lleno?'':' parcial'}` : (b.km?`${fmt(b.km)} km`:'Sin odómetro');
+  const l2 = u ? `Última carga ${fechaCorta(u.fecha)}` : 'Sin cargas registradas';
+  return `<div class="crow${sel?' sel':''}${d===0?' hoy':''}" data-id="${escHtml(b.id)}">
+    <button class="csel" aria-label="Marcar unidad ${escHtml(b.name)}" aria-pressed="${sel}" onclick="cargaToggle(this.parentNode.dataset.id)"><span class="cbox">${IC.check}</span></button>
+    <button class="cmain" onclick="cargaUna(this.parentNode.dataset.id)">
+      <span class="u">${escHtml(b.name)}</span>
+      <span class="t"><span>${l1}</span><span>${l2}</span></span>
+      <span class="cdays ${cls}">${right}</span>
+    </button></div>`;
+}
+function refreshCargaList(){ const el=document.getElementById('cg-list'); if(el) el.innerHTML=renderCargaList(); }
+function cargaToggle(id){
+  const i=ST.cargaSel.indexOf(id);
+  if(i>=0) ST.cargaSel.splice(i,1); else ST.cargaSel.push(id);
+  const y=window.scrollY; render(); window.scrollTo(0,y);
+}
+function cargaMarcar(on){
+  const vis=cargaListOrder(cargaHubBuses());
+  ST.cargaSel = on ? [...new Set([...ST.cargaSel,...vis])] : ST.cargaSel.filter(id=>!vis.includes(id));
+  const y=window.scrollY; render(); window.scrollTo(0,y);
+}
+// Una sola unidad desde la lista: misma pantalla que la hoja de acciones, pero
+// "atrás" y "guardar" regresan a Cargas.
+function cargaUna(id){ ST.cargaBack='/cargas'; navigate('/unidad/'+encodeURIComponent(id)+'/carga'); }
+
+// ── Captura: UN componente para lote y para una sola unidad ──
+function cargaDraftOf(id){ return ST.cargaDraft[id] || (ST.cargaDraft[id]={l:'',o:'',full:true}); }
+function cargaSig(){ return JSON.stringify([ST.cargaFecha, ST.cargaIds.map(id=>ST.cargaDraft[id]||null)]); }
+function renderCargaEntry(opts){
+  const buses=ST.cargaIds.map(id=>ST.buses.find(b=>b.id===id)).filter(Boolean);
+  const back=ST.cargaBack||opts.backTo;
+  let h = opts.bus ? uheadUnit(opts.bus,{title:opts.title,backTo:back})
+    : `<div class="uhead"><div class="uhead-top"><button class="uback" onclick="navigate('${back}')" aria-label="Atrás">‹</button>
+        <div style="flex:1;min-width:0"><div class="uttl">${opts.title}</div><div class="umeta">${buses.length} unidad${buses.length===1?'':'es'}</div></div></div></div>`;
+  h+=`<div class="pad" style="padding-bottom:110px">`;
+  if(!buses.length) return h+`<div class="empty-state">No hay unidades marcadas.<br><br><button class="btn2" onclick="navigate('/cargas')">Ir a Cargas</button></div></div>`;
+  if(ST.cargaErr) h+=`<div class="modal-err">${escHtml(ST.cargaErr)}</div>`;
+  const warnRows=buses.filter(b=>{ const m=ST.cargaMsgs[b.id]; return m&&!m.err.length&&m.warn.length; }).length;
+  const warnMode=!!(ST.cargaWarnSig && ST.cargaWarnSig===cargaSig() && warnRows);
+  if(warnMode) h+=`<div class="ebanner"><b>${warnRows} con advertencia.</b> Revisa los renglones marcados. Si todo está bien, toca <b>Guardar de todos modos</b> y quedarán señalados para revisión.</div>`;
+  const hoy=hoyLocal();
+  h+=`<div class="cfecha"><label for="cg-fecha">Fecha</label>${ST.cargaFecha!==hoy?'<span class="late">Captura atrasada</span>':''}
+    <input type="date" id="cg-fecha" value="${ST.cargaFecha}" max="${hoy}" onchange="ST.cargaFecha=this.value||hoyLocal();render()"></div>`;
+  h+=`<div class="ehead"><span>Unidad</span><span>Litros</span><span>Odómetro</span><span>Lleno</span></div>`;
+  buses.forEach((b,i)=>{ h+=cargaEntryRow(b,i,i===buses.length-1); });
+  h+=`</div>`;
+  const lbl = ST.saving ? '<span class="spinner"></span>Guardando…'
+            : warnMode ? 'Guardar de todos modos'
+            : buses.length>1 ? `Guardar todo (${buses.length})` : 'Guardar carga';
+  h+=`<div class="stickybar"><button class="btn-primary-lg" onclick="doSaveCargas()" ${ST.saving?'disabled':''}>${lbl}</button></div>`;
+  return h;
+}
+function cargaEntryRow(b,i,isLast){
+  const d=cargaDraftOf(b.id), m=ST.cargaMsgs[b.id]||{err:[],warn:[]};
+  const err=m.err.length, warn=m.warn.length;
+  return `<div class="eitem${err?' err':warn?' warn':''}"><div class="erow">
+    <div class="u num" title="${escHtml(b.name)}">${escHtml(b.name)}</div>
+    <div class="efield"><input id="cg-l-${i}" type="text" inputmode="decimal" enterkeyhint="next" autocomplete="off" placeholder="0" aria-label="Litros unidad ${escHtml(b.name)}"
+      value="${escHtml(d.l)}" oninput="cargaInput(${i},'l',this.value)" onkeydown="cargaKey(event,${i},'l')"><em>L</em></div>
+    <div class="efield"><input id="cg-o-${i}" type="text" inputmode="numeric" enterkeyhint="${isLast?'done':'next'}" autocomplete="off" placeholder="${b.km?fmt(b.km):'0'}" aria-label="Odómetro unidad ${escHtml(b.name)}"
+      value="${escHtml(d.o)}" oninput="cargaInput(${i},'o',this.value)" onkeydown="cargaKey(event,${i},'o')"><em>km</em>
+      <div class="ehint" id="cg-h-${i}">${cargaHint(b,d.o)}</div></div>
+    <label class="etank"><input type="checkbox" ${d.full?'checked':''} onchange="cargaInput(${i},'full',this.checked)"><span>lleno</span></label>
+  </div>${err?`<div class="emsg err">${m.err.join('<br>')}</div>`:warn?`<div class="emsg warn">${m.warn.map(w=>'⚠ '+w.msg).join('<br>')}</div>`:''}</div>`;
+}
+// Bajo el odómetro: última lectura en gris + delta en vivo.
+function cargaHint(bus,raw){
+  const last=bus.km||0, v=parseOdo(raw);
+  if(!last) return 'Sin lectura previa';
+  let s=`Últ. ${fmt(last)}`;
+  if(v!=null){ const dl=v-last; s+=` · <b class="${dl<0?'neg':dl>CARGA_SALTO_KM?'big':''}">${dl<0?'−':'+'}${fmt(Math.abs(dl))} km</b>`; }
+  return s;
+}
+// Escribir NO re-renderiza (perdería el foco y el teclado): solo se guarda en
+// el borrador y se actualiza el delta de ese renglón.
+function cargaInput(i,k,v){
+  const id=ST.cargaIds[i]; if(id==null) return;
+  cargaDraftOf(id)[k]=v;
+  if(k==='o'){ const el=document.getElementById('cg-h-'+i), bus=ST.buses.find(b=>b.id===id); if(el&&bus) el.innerHTML=cargaHint(bus,v); }
+}
+// Cadena de foco: litros → odómetro → litros del siguiente renglón.
+function cargaKey(e,i,k){
+  if(e.key!=='Enter') return;
+  e.preventDefault();
+  const next=document.getElementById(k==='l'?'cg-o-'+i:'cg-l-'+(i+1));
+  if(next){ next.focus(); next.select?.(); } else e.target.blur();
+}
+async function doSaveCargas(){
+  if(ST.saving||!sb) return;
+  const buses=ST.cargaIds.map(id=>ST.buses.find(b=>b.id===id)).filter(Boolean);
+  if(!buses.length) return;
+  const msgs={}; let nErr=0, nWarn=0, firstErr=-1;
+  buses.forEach((b,i)=>{ const r=cargaCheck(b,cargaDraftOf(b.id)); msgs[b.id]=r; if(r.err.length){ nErr++; if(firstErr<0) firstErr=i; } else if(r.warn.length) nWarn++; });
+  ST.cargaMsgs=msgs; ST.cargaErr='';
+  if(nErr){
+    ST.cargaErr = nErr===1&&buses.length===1 ? 'Falta un dato. No se guardó nada.' : `${nErr} renglón(es) incompletos. No se guardó nada.`;
+    ST.cargaWarnSig=null;
+    const d=cargaDraftOf(buses[firstErr].id);
+    ST.focusId=(parseLitros(d.l)>0?'cg-o-':'cg-l-')+firstErr;
+    render(); return;
+  }
+  // Primera vez con advertencias: se muestran y se pide confirmar. Si tocan
+  // Guardar otra vez sin cambiar nada, eso es la confirmación.
+  const sig=cargaSig();
+  if(nWarn && ST.cargaWarnSig!==sig){ ST.cargaWarnSig=sig; render(); window.scrollTo(0,0); return; }
+  const fecha=ST.cargaFecha||hoyLocal();
+  const rows=buses.map(b=>{ const d=cargaDraftOf(b.id); return {
+    bus_id:b.id, fecha, litros:parseLitros(d.l), odometro:parseOdo(d.o), tanque_lleno:!!d.full,
+    flags:msgs[b.id].warn.map(w=>w.flag) }; });
+  ST.saving=true; render();
+  const {data,error}=await sb.from('cargas').insert(rows).select();
+  ST.saving=false;
+  if(error){ ST.cargaErr='No se guardó ninguna carga: '+cargaErrMsg(error); render(); window.scrollTo(0,0); return; }
+  ST.cargas=[...(data||[]),...ST.cargas];
+  // El trigger ya avanzó buses.km en la base; aquí solo se refleja en memoria.
+  rows.forEach(r=>{ const b=ST.buses.find(x=>x.id===r.bus_id); if(b && r.odometro>(b.km||0)) b.km=r.odometro; });
+  ST.cargaIds.forEach(id=>{ delete ST.cargaDraft[id]; });
+  ST.cargaSel=ST.cargaSel.filter(id=>!ST.cargaIds.includes(id));
+  const back=ST.cargaBack || (ST.action==='carga' ? '/unidad/'+encodeURIComponent(ST.busId) : '/cargas');
+  ST.cargaMsgs={}; ST.cargaWarnSig=null; ST.cargaBack=null; ST.cargaFecha='';
+  navigate(back);
+  showToast(rows.length===1?'Carga guardada':`${rows.length} cargas guardadas`);
+}
+function cargaErrMsg(e){
+  const m=e?.message||String(e);
+  if(/fetch|network|Failed/i.test(m)) return 'sin conexión. Revisa la señal y vuelve a tocar Guardar; lo capturado sigue aquí.';
+  if(/row-level security/i.test(m)) return 'no tienes permiso para alguna de estas unidades.';
+  return m;
+}
+
+// ── Dashboard de unidad: historial de cargas ──
+function renderCargasCard(bus){
+  const uid_=encodeURIComponent(bus.id);
+  const hist=busCargas(bus.id);
+  let h=`<div class="card2"><div class="between" style="margin-bottom:4px"><h2 class="h2">Cargas</h2>
+    <button class="btn2 sm ate" onclick="ST.cargaBack=null;navigate('/unidad/${uid_}/carga')">Registrar</button></div>`;
+  if(!hist.length) return h+`<div class="muted small">Sin cargas registradas en los últimos ${CARGA_VENTANA_DIAS} días.</div></div>`;
+  const segs=rendimientoSegs(hist), avg=rendPromedio(segs);
+  const kml=Object.fromEntries(segs.map(s=>[s.carga.id,s.kml]));
+  const mes=hoyLocal().slice(0,7);
+  const lMes=hist.filter(c=>String(c.fecha).startsWith(mes)).reduce((a,c)=>a+Number(c.litros),0);
+  const d=diasDesde(hist[0].fecha);
+  h+=`<div class="cg-stats">
+    <div><b class="num">${avg?avg.toFixed(2):'—'}</b><span>km/L promedio</span></div>
+    <div><b class="num">${fmtL(lMes)}</b><span>litros este mes</span></div>
+    <div><b class="num">${d===0?'Hoy':d}</b><span>${d===0?'última carga':d===1?'día sin carga':'días sin carga'}</span></div></div>`;
+  hist.slice(0,6).forEach(c=>{
+    const fl=(c.flags||[]);
+    h+=`<div class="cgi"><span class="d">${fechaCorta(c.fecha)}</span>
+      <span class="l num">${fmtL(c.litros)} L${c.tanque_lleno?'':' <span class="faint" style="font-weight:400">parcial</span>'}</span>
+      <span class="r num">${fmt(c.odometro)} km${kml[c.id]?` · <b>${kml[c.id].toFixed(1)}</b> km/L`:''}</span>
+      ${fl.length?`<span class="f">${fl.map(f=>`<span class="badge b-warn">${CARGA_FLAG_LBL[f]||escHtml(f)}</span>`).join('')}</span>`:''}</div>`;
+  });
+  if(!avg) h+=`<div class="small faint" style="padding-top:6px">El km/L aparece con dos cargas de tanque lleno.</div>`;
+  return h+`</div>`;
+}
+async function doSaveCapacidad(id,val){
+  const bus=ST.buses.find(b=>b.id===id); if(!bus) return;
+  const t=String(val??'').trim();
+  const n=t===''?null:Number(t.replace(',','.'));
+  if(n!=null && !(n>0)){ showToast('Capacidad inválida.','error'); return; }
+  const prev=bus.capacidad_tanque; bus.capacidad_tanque=n;
+  const {error}=await dbUpdateBus(id,{capacidad_tanque:n});
+  if(error){ bus.capacidad_tanque=prev; showToast('No se pudo guardar la capacidad.','error'); return; }
+  showToast(n==null?'Capacidad borrada':'Capacidad guardada');
+}
+
 // ─── ROUTER (History API) ────────────────────────────────────────────────────
 // Cada pantalla es una URL real. navigate() empuja al historial del navegador;
 // popstate (botón atrás del navegador y gesto de atrás del celular) re-deriva el
@@ -3580,12 +3992,12 @@ const TAB_SLUG_BY_TAB = Object.fromEntries(Object.entries(TAB_SLUGS).map(([slug,
 // Slugs viejos (7 tabs, antes de consolidar) -> tab nuevo, para no romper links.
 const LEGACY_TAB = { status:'resumen', servicio:'mantenimiento', llantas:'mantenimiento',
   reparaciones:'mantenimiento', checklist:'inspecciones', chequeo:'inspecciones', historial:'inspecciones' };
-const HUB_SLUGS   = { reportes:'report', chequeos:'chequeos', compras:'compras', unidades:'fleet' };
+const HUB_SLUGS   = { reportes:'report', chequeos:'chequeos', compras:'compras', unidades:'fleet', cargas:'cargas' };
 const HUB_SLUG_BY_VIEW = Object.fromEntries(Object.entries(HUB_SLUGS).map(([slug,view])=>[view,slug]));
 const ACEITE_SLUGS = { motor:'svc', transmision:'svc_trans', diferencial:'svc_diff' };
 const ACEITE_SLUG_BY_TYPE = { svc:'motor', svc_trans:'transmision', svc_diff:'diferencial' };
 // Acciones que son pantalla propia (header pegajoso + barra de guardar inferior).
-const ACTION_SLUGS = new Set(['aceite','reparacion','registro','checklist-nuevo','golpes','chequeo-nuevo','odometro']);
+const ACTION_SLUGS = new Set(['aceite','reparacion','registro','checklist-nuevo','golpes','chequeo-nuevo','odometro','carga']);
 
 function parsePath(pathname){
   // Partir el path CRUDO por '/', y decodificar cada segmento después. Si se
@@ -3593,6 +4005,7 @@ function parsePath(pathname){
   // -> "75%20%2F%20901") se rompe en dos segmentos y la unidad no se encuentra.
   const seg = pathname.replace(/^\/+|\/+$/g,'').split('/').filter(Boolean).map(s=>{ try{ return decodeURIComponent(s); }catch(e){ return s; } });
   if(!seg.length) return {view:'home'};
+  if(seg[0]==='cargas' && seg[1]==='registrar') return {view:'cargas-reg'};
   if(HUB_SLUGS[seg[0]]) return {view:HUB_SLUGS[seg[0]]};
   if(seg[0]==='unidad' && seg[1]){
     const r={view:'fleet', busId:seg[1]};
@@ -3614,6 +4027,7 @@ function pathForState(){
     else if(ST.tab && ST.tab!=='resumen') p+='/'+(TAB_SLUG_BY_TAB[ST.tab]||ST.tab);
     return p;
   }
+  if(ST.view==='cargas-reg') return '/cargas/registrar';
   return HUB_SLUG_BY_VIEW[ST.view] ? '/'+HUB_SLUG_BY_VIEW[ST.view] : '/';
 }
 
@@ -3627,6 +4041,15 @@ function applyRoute(){
   ST.selService = (r.action==='aceite') ? (ACEITE_SLUGS[r.actionParam]||null) : null;
   ST.selTire=null; ST.modal=null; ST.modalErr='';
   if(r.action==='odometro'){ ST.odoKm=''; ST.odoMotivo=''; }
+  // Captura de cargas: lote (lo marcado en la lista) o una sola unidad. El
+  // borrador (ST.cargaDraft) se conserva si regresan a la lista y vuelven.
+  if(ST.auth && (r.view==='cargas-reg' || r.action==='carga')){
+    const ids = r.action==='carga' ? [r.busId] : cargaListOrder().filter(id=>ST.cargaSel.includes(id));
+    if(ids.join('\n')!==ST.cargaIds.join('\n')){ ST.cargaMsgs={}; ST.cargaWarnSig=null; }
+    ST.cargaIds=ids; ST.cargaErr='';
+    if(!ST.cargaFecha) ST.cargaFecha=hoyLocal();
+    ST.focusId = ids.length ? 'cg-l-0' : null;
+  }
   // Al entrar a una inspección de checklist, precarga golpes activos (gris) y limpia los nuevos.
   if(r.action==='checklist-nuevo' && r.busId){
     ST.clPrevPins=activeDanos(r.busId).map(d=>({x:Number(d.x),y:Number(d.y),descripcion:d.descripcion,severidad:d.severidad}));
@@ -3661,7 +4084,7 @@ const SYNC_MIN_MS=20000;
 async function refreshData(force){
   if(!sb||!ST.auth) return;
   if(!force && Date.now()-lastSync<SYNC_MIN_MS) return;
-  if(ST.saving||ST.action||ST.modal) return;
+  if(ST.saving||ST.action||ST.modal||ST.view==='cargas-reg') return;
   const ae=document.activeElement;
   if(ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
   lastSync=Date.now();
@@ -3670,6 +4093,7 @@ async function refreshData(force){
   if(error){ console.error('Error refrescando datos:', error); return; }
   await loadChequeosData();
   await loadComprasData();
+  await loadCargasData();
   if(dataSig()===antes) return;          // nada cambió: no repintar
   const y=window.scrollY;
   render();
@@ -3677,7 +4101,7 @@ async function refreshData(force){
 }
 // Firma barata de lo que se pinta: si no cambia, no vale la pena repintar.
 function dataSig(){
-  return ST.logs.length+'|'+ST.chequeos.length+'|'+ST.danos.length+'|'+
+  return ST.logs.length+'|'+ST.chequeos.length+'|'+ST.danos.length+'|'+ST.cargas.length+'|'+
     ST.ordenes.map(o=>o.id+':'+o.status).join(',')+'|'+
     ST.buses.map(b=>b.id+':'+(b.km||0)+':'+((b.open_issues||[]).filter(i=>!i.resolved).length)).join(',');
 }
