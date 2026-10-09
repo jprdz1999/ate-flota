@@ -1902,14 +1902,8 @@ function checklistBody(bus){
     </div>
     <div class="fg2">
       <div class="form-row"><label>Conductor/Operador *</label><input type="text" id="cl-conductor" placeholder="Nombre del conductor"></div>
-      <div class="form-row"><label>Supervisado por *</label><input type="text" id="cl-supervisor" placeholder="Nombre del supervisor"></div>
-    </div>
-    <div class="fg2">
       <div class="form-row"><label>Fecha *</label><input type="date" id="cl-fecha" value="${today()}"></div>
-      <div class="form-row"><label>Hora</label><input type="time" id="cl-hora"></div>
     </div>
-    <div class="form-row" style="max-width:260px"><label>Carga de combustible (%)</label>
-      <input type="number" id="cl-combustible" min="0" max="100" placeholder="0–100"></div>
     <div class="cl-section"><div class="cl-sec-hdr">Documentación</div>${clBoolRow('cl-docs',CL_DOCS)}</div>
     <div class="cl-section"><div class="cl-sec-hdr">Parte Externa</div>${clBoolRow('cl-externo',CL_EXTERNO)}</div>
     <div class="cl-section"><div class="cl-sec-hdr">Carrocería <span style="font-size:10px;font-weight:400;text-transform:none;letter-spacing:0">B / M / NA</span></div>${clBMNRow('cl-carroceria',CL_CARROCERIA)}</div>
@@ -3114,7 +3108,7 @@ function renderChecklist(bus){
         <div style="width:8px;height:8px;border-radius:50%;background:${passed?'var(--green)':'var(--red)'};flex-shrink:0;margin-top:3px"></div>
         <div style="flex:1;min-width:0">
           <div style="font-weight:500;font-size:13px">${l.date}${data?.hora?' &nbsp;·&nbsp; '+data.hora:''}</div>
-          <div style="font-size:11px;color:var(--text2);margin-top:1px">${data?.conductor||'—'}${l.km_after?' &nbsp;·&nbsp; '+fmt(l.km_after)+' km':''}</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:1px">${escHtml(data?.conductor||'—')}${l.km_after?' &nbsp;·&nbsp; '+fmt(l.km_after)+' km':''}${data?.supervisor?' &nbsp;·&nbsp; Revisó: '+escHtml(String(data.supervisor).split('@')[0]):''}</div>
           ${failures.length?`<div style="font-size:11px;color:var(--red-dark);margin-top:2px">${failures.slice(0,3).join(' · ')}${failures.length>3?' +'+( failures.length-3)+' más':''}</div>`:''}
           ${warns.length?`<div style="font-size:11px;color:var(--amber-dark);margin-top:2px">${warns.slice(0,3).join(' · ')}${warns.length>3?' +'+(warns.length-3)+' más':''}</div>`:''}
         </div>
@@ -3132,17 +3126,11 @@ function renderChecklistForm(bus){
       <h4>Nueva inspección — ${bus.name}</h4>
       <button class="btn sm ghost" onclick="ST.clView='history';ST.modalErr='';render()">← Cancelar</button>
     </div>
-    <div class="fg2">
-      <div class="form-row"><label>Conductor/Operador *</label><input type="text" id="cl-conductor" placeholder="Nombre del conductor"></div>
-      <div class="form-row"><label>Supervisado por *</label><input type="text" id="cl-supervisor" placeholder="Nombre del supervisor"></div>
-    </div>
     <div class="fg3">
+      <div class="form-row"><label>Conductor/Operador *</label><input type="text" id="cl-conductor" placeholder="Nombre del conductor"></div>
       <div class="form-row"><label>Fecha *</label><input type="date" id="cl-fecha" value="${today()}"></div>
-      <div class="form-row"><label>Hora de inspección</label><input type="time" id="cl-hora"></div>
       <div class="form-row"><label>Kilometraje *</label><input type="number" id="cl-km" value="${bus.km}" min="0"></div>
     </div>
-    <div class="form-row" style="max-width:260px"><label>Carga de combustible (%)</label>
-      <input type="number" id="cl-combustible" min="0" max="100" placeholder="0–100"></div>
 
     <div class="cl-section"><div class="cl-sec-hdr">Documentación</div>${clBoolRow('cl-docs',CL_DOCS)}</div>
     <div class="cl-section"><div class="cl-sec-hdr">Parte Externa</div>${clBoolRow('cl-externo',CL_EXTERNO)}</div>
@@ -3574,15 +3562,14 @@ async function doSaveChecklist(busId){
   const fecha=document.getElementById('cl-fecha')?.value;
   if(!conductor){ showClErr('El conductor/operador es obligatorio.'); return; }
   if(!fecha){ showClErr('La fecha es obligatoria.'); return; }
-  const supervisor=(document.getElementById('cl-supervisor')?.value||'').trim();
-  if(!supervisor){ showClErr('El supervisor es obligatorio.'); return; }
   showClErr('');
   const kmAfter=km;
+  // Quién hizo la inspección = el usuario con sesión (ya no se escribe a mano).
+  // Hora y % de combustible se quitaron del formulario; los checklists viejos
+  // los conservan en su JSON.
   const data={
     conductor,
-    supervisor,
-    hora:document.getElementById('cl-hora')?.value||'',
-    combustible:parseFloat(document.getElementById('cl-combustible')?.value)||0,
+    supervisor:ST.authEmail||'',
     docs:clReadBool('cl-docs',CL_DOCS),
     externo:clReadBool('cl-externo',CL_EXTERNO),
     carroceria:clReadBMN('cl-carroceria',CL_CARROCERIA),
@@ -3606,7 +3593,7 @@ async function doSaveChecklist(busId){
     if(!bus.open_issues) bus.open_issues=[];
     reps.forEach(t=>bus.open_issues.push({id:uid(),text:t,date:fecha,resolved:false}));
   }
-  const log={id:uid(),bus_id:busId,city:bus.city,type:'checklist',date:fecha,description:'__CL__'+JSON.stringify(data),cost:0,km_after:kmAfter,ts:Date.now()};
+  const log={id:uid(),bus_id:busId,city:bus.city,type:'checklist',date:fecha,description:'__CL__'+JSON.stringify(data),cost:0,km_after:kmAfter,technician:ST.authEmail||null,ts:Date.now()};
   ST.logs.unshift(log);
   ST.saving=true; render();
   const {error:e1}=await dbUpdateBus(busId,{open_issues:bus.open_issues||[]});
