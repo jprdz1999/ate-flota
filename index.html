@@ -403,6 +403,7 @@ body{background:var(--bg);color:var(--text);font-size:15px}
 .crow.sel .cbox{background:var(--accent);border-color:var(--accent)}.crow.sel .cbox svg{opacity:1}
 .cmain{flex:1;min-width:0;display:flex;align-items:center;gap:12px;padding:13px 14px 13px 0;background:none;border:0;text-align:left;cursor:pointer;font-family:inherit;color:var(--text)}
 .cmain .u{font-family:var(--display);font-size:22px;font-weight:700;min-width:52px;letter-spacing:-.01em}
+.cmain .u.long{font-size:16px;line-height:1.1;max-width:84px;flex-shrink:0}
 .cmain .t{flex:1;min-width:0;font-size:12.5px;color:var(--text2);line-height:1.35}
 .cmain .t span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cdays{text-align:right;flex:0 0 auto;line-height:1}
@@ -420,12 +421,13 @@ body{background:var(--bg);color:var(--text);font-size:15px}
 .cfecha label{margin:0;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;color:var(--text2)}
 .cfecha input{flex:1;font-size:16px;border:0;background:none;color:var(--text);font-family:inherit;text-align:right;padding:4px 0}
 .cfecha .late{font-size:12px;color:var(--warn);font-weight:600}
-.ehead,.erow{display:grid;grid-template-columns:var(--uw,52px) minmax(0,1fr) minmax(0,1.35fr) 44px;gap:8px;align-items:start}
+.ehead,.erow{display:grid;grid-template-columns:var(--uw,52px) minmax(0,1fr) minmax(0,1.35fr) 44px;gap:7px;align-items:start}
 .ehead{font-size:10.5px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.09em;padding:0 2px 6px}
 .ehead span:last-child{text-align:center}
 .eitem{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 10px 9px;margin-bottom:8px}
 .eitem.err{border-color:var(--bad)}.eitem.warn{border-color:var(--warn)}
 .erow .u{font-family:var(--display);font-size:19px;font-weight:700;padding-top:10px;line-height:1.1;overflow-wrap:anywhere}
+.erow .u.long{font-size:15px;padding-top:11px}
 .efield{position:relative}
 .efield input{width:100%;font-family:var(--display);font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;padding:9px 8px;border:1.5px solid var(--border2);border-radius:9px;background:var(--bg2);color:var(--text);outline:none}
 .efield input:focus{border-color:var(--accent);background:var(--surface)}
@@ -3726,6 +3728,9 @@ function fmtL(n){ return Number(n||0).toLocaleString('es-MX',{maximumFractionDig
 function busCargas(busId){ return ST.cargas.filter(c=>c.bus_id===busId).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha))||b.odometro-a.odometro); }
 function lastCarga(busId){ return busCargas(busId)[0]||null; }
 function parseLitros(s){ const t=String(s??'').trim().replace(',','.'); if(!t) return null; const n=Number(t); return Number.isFinite(n)?n:NaN; }
+// Nombres que no caben en el tamaño normal ("BUSSTAR 360", "768 / 776"): en la
+// lista y en la captura usan letra más chica para no comerse el resto del renglón.
+function nombreLargo(name){ const s=String(name??''); return s.length>8 || s.split(/\s+/).some(w=>w.length>5); }
 function parseOdo(s){ const t=String(s??'').replace(/[^\d]/g,''); return t?parseInt(t,10):null; }
 
 // Rendimiento tanque lleno a tanque lleno. Un segmento va de una carga llena a
@@ -3858,7 +3863,7 @@ function cargaRowHTML(b){
   return `<div class="crow${sel?' sel':''}${d===0?' hoy':''}" data-id="${escHtml(b.id)}">
     <button class="csel" aria-label="Marcar unidad ${escHtml(b.name)}" aria-pressed="${sel}" onclick="cargaToggle(this.parentNode.dataset.id)"><span class="cbox">${IC.check}</span></button>
     <button class="cmain" onclick="cargaUna(this.parentNode.dataset.id)">
-      <span class="u">${escHtml(b.name)}</span>
+      <span class="u${nombreLargo(b.name)?' long':''}">${escHtml(b.name)}</span>
       <span class="t"><span>${l1}</span><span>${l2}</span></span>
       <span class="cdays ${cls}">${right}</span>
     </button></div>`;
@@ -3900,7 +3905,7 @@ function renderCargaEntry(opts){
   // "768 / 776"): con ancho fijo se cortaban a "ECO…". Lotes de números de 3
   // dígitos se quedan en 52 px; el tope deja espacio a litros y odómetro.
   const maxLen=Math.max(...buses.map(b=>String(b.name).length));
-  const uw=Math.min(76,Math.max(52,maxLen*10+4));
+  const uw=Math.min(72,Math.max(52,maxLen*10+4));
   h+=`<div style="--uw:${uw}px">`;
   h+=`<div class="ehead"><span>Unidad</span><span>Litros</span><span>Odómetro (km)</span><span>Lleno</span></div>`;
   buses.forEach((b,i)=>{ h+=cargaEntryRow(b,i,i===buses.length-1); });
@@ -3916,7 +3921,7 @@ function cargaEntryRow(b,i,isLast){
   const d=cargaDraftOf(b.id), m=ST.cargaMsgs[b.id]||{err:[],warn:[]};
   const err=m.err.length, warn=m.warn.length;
   return `<div class="eitem${err?' err':warn?' warn':''}"><div class="erow">
-    <div class="u num" title="${escHtml(b.name)}">${escHtml(b.name)}</div>
+    <div class="u num${nombreLargo(b.name)?' long':''}" title="${escHtml(b.name)}">${escHtml(b.name)}</div>
     <div class="efield"><input id="cg-l-${i}" type="text" inputmode="decimal" enterkeyhint="next" autocomplete="off" placeholder="0" aria-label="Litros unidad ${escHtml(b.name)}"
       value="${escHtml(d.l)}" oninput="cargaInput(${i},'l',this.value)" onkeydown="cargaKey(event,${i},'l')"></div>
     <div class="efield"><input id="cg-o-${i}" type="text" inputmode="numeric" enterkeyhint="${isLast?'done':'next'}" autocomplete="off" placeholder="${b.km?fmt(b.km):'0'}" aria-label="Odómetro unidad ${escHtml(b.name)}"
