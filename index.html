@@ -614,7 +614,10 @@ let ST = {
   // (vista cargas_mensual, se pide al abrir la pestaña) y cargas con
   // advertencia sin revisar (solo admin).
   cargaTab:'registrar', consumoMes:'', consumo:null, consumoErr:'', cargasRevision:[], revDelId:null,
-  cargasMesBus:{}   // bus_id -> litros del mes en curso (de cargas_mensual)
+  cargasMesBus:{},  // bus_id -> litros del mes en curso (de cargas_mensual)
+  // Descarga del historial detallado (una fila por carga) por rango de fechas.
+  // histDesde vacío = desde el inicio.
+  histDesde:null, histHasta:null, histLoading:false, histMsg:'', histErr:false
 };
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
@@ -4098,7 +4101,8 @@ function consumoRows(){
 function kmlDe(rows){ const r=rows.filter(x=>x.km!=null&&x.litros_seg); const km=r.reduce((a,x)=>a+Number(x.km),0), l=r.reduce((a,x)=>a+Number(x.litros_seg),0); return km&&l?km/l:null; }
 function renderConsumo(){
   const m=ST.consumoMes||mesActual();
-  let h=`<div class="between" style="margin-bottom:12px">
+  let h=renderHistorialDescarga();
+  h+=`<div class="between" style="margin-bottom:12px">
     <div class="cmes"><button class="btn2 sm ghost" onclick="consumoMover(-1)" aria-label="Mes anterior">‹</button><b>${mesLargo(m)}</b><button class="btn2 sm ghost" onclick="consumoMover(1)" ${m>=mesActual()?'disabled':''} aria-label="Mes siguiente">›</button></div>
     ${ST.consumoFor===m&&ST.consumo?.length?`<button class="btn2 sm" onclick="consumoCsv()" title="Descargar CSV">CSV ↓</button>`:''}</div>`;
   if(ST.consumoErr) return h+`<div class="modal-err">No se pudo cargar el consumo: ${escHtml(ST.consumoErr)}</div>`;
@@ -4141,6 +4145,93 @@ function renderConsumo(){
   h+=`</tbody></table>`;
   if(cur.some(r=>r.km_l==null)) h+=`<div class="small faint" style="padding-top:8px">"—" en km/L: la unidad aún no tiene dos cargas de tanque lleno que cierren en este mes.</div>`;
   return h+`</div>`;
+}
+// ── Historial de cargas: todas las cargas (una por renglón) en un rango de
+// fechas, no el resumen. Se pide a la base al descargar (no usa ST.cargas, que
+// son solo las últimas 20 por unidad). Respeta el RLS y el filtro de ciudad.
+const HIST_RANGOS=[['mes','Este mes'],['ant','Mes anterior'],['90','Últimos 90 días'],['todo','Todo']];
+function histRango(id){
+  const hoy=hoyLocal(), m=mesActual();
+  if(id==='mes'){ ST.histDesde=m+'-01'; ST.histHasta=hoy; }
+  else if(id==='ant'){ const p=mesMas(m,-1); ST.histDesde=p+'-01'; ST.histHasta=hoyLocal(new Date(Number(m.slice(0,4)),Number(m.slice(5,7))-1,0)); }
+  else if(id==='90'){ ST.histDesde=hoyLocal(new Date(Date.now()-89*86400000)); ST.histHasta=hoy; }
+  else { ST.histDesde=''; ST.histHasta=hoy; }
+  ST.histMsg=''; render();
+}
+function renderHistorialDescarga(){
+  if(ST.histDesde==null){ ST.histDesde=mesActual()+'-01'; ST.histHasta=hoyLocal(); }
+  const hoy=hoyLocal();
+  const ciudad=ST.cargaCity!=='all'?` de ${CITIES[ST.cargaCity]?.name||ST.cargaCity}`:'';
+  return `<div class="card2" style="margin-bottom:14px">
+    <h2 class="h2" style="margin-bottom:4px">Historial de cargas</h2>
+    <div class="small muted" style="margin-bottom:10px">Todas las cargas${ciudad}, una por renglón, en el rango que elijas.</div>
+    <div class="chips" style="padding-bottom:10px">${HIST_RANGOS.map(([id,l])=>`<button class="chip" onclick="histRango('${id}')">${l}</button>`).join('')}</div>
+    <div class="fg2">
+      <div class="form-row"><label>Desde</label><input type="date" value="${ST.histDesde||''}" max="${hoy}" onchange="ST.histDesde=this.value;ST.histMsg=''"></div>
+      <div class="form-row"><label>Hasta</label><input type="date" value="${ST.histHasta||''}" max="${hoy}" onchange="ST.histHasta=this.value;ST.histMsg=''"></div>
+    </div>
+    ${!ST.histDesde?`<div class="small faint" style="margin:-4px 0 10px">Sin fecha de inicio: desde la primera carga registrada.</div>`:''}
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <button class="btn2 ate" onclick="descargarHistorialCargas()" ${ST.histLoading?'disabled':''}>${ST.histLoading?'<span class="spinner"></span>Preparando…':'Descargar CSV'}</button>
+      ${ST.histMsg?`<span class="small${ST.histErr?'':' muted'}"${ST.histErr?' style="color:var(--red-dark)"':''}>${escHtml(ST.histMsg)}</span>`:''}
+    </div></div>`;
+}
+// PostgREST corta en 1000 filas: se pagina. Orden total (con id) para que las
+// páginas no se encimen ni se salten filas.
+async function histFetchAll(tabla,cols,orden,desde,hasta){
+  let all=[];
+  for(let from=0;;from+=1000){
+    let q=sb.from(tabla).select(cols);
+    if(desde) q=q.gte('fecha',desde);
+    if(hasta) q=q.lte('fecha',hasta);
+    orden.forEach(c=>{ q=q.order(c); });
+    const {data,error}=await q.range(from,from+999);
+    if(error) throw error;
+    all=all.concat(data||[]);
+    if(!data||data.length<1000) break;
+  }
+  return all;
+}
+function fechaHoraLocal(ts){ if(!ts) return ''; const d=new Date(ts); return hoyLocal(d)+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+async function descargarHistorialCargas(){
+  if(ST.histLoading||!sb) return;
+  const desde=ST.histDesde||'', hasta=ST.histHasta||'';
+  if(desde&&hasta&&desde>hasta){ ST.histMsg='La fecha "desde" es posterior a "hasta".'; ST.histErr=true; render(); return; }
+  ST.histLoading=true; ST.histMsg=''; ST.histErr=false; render();
+  let cargas, rend;
+  try{
+    // km/L por carga: el segmento lleno-a-lleno se fecha con la carga que lo
+    // cierra, así que el mismo rango de fechas trae el de cada carga.
+    [cargas,rend]=await Promise.all([
+      histFetchAll('cargas','*',['fecha','bus_id','odometro','id'],desde,hasta),
+      histFetchAll('cargas_rendimiento','carga_id,km,km_l',['fecha','carga_id'],desde,hasta),
+    ]);
+  }catch(e){
+    ST.histLoading=false; ST.histMsg='No se pudo descargar: '+cargaErrMsg(e); ST.histErr=true; render(); return;
+  }
+  ST.histLoading=false;
+  const byId=new Map(cityBuses().map(b=>[b.id,b]));
+  const seg=new Map(rend.map(r=>[r.carga_id,r]));
+  const rows=cargas.map(c=>({c,b:byId.get(c.bus_id)}))
+    .filter(x=>x.b && (ST.cargaCity==='all'||x.b.city===ST.cargaCity))
+    .sort((x,y)=>String(x.c.fecha).localeCompare(String(y.c.fecha))||cmpUnidad(x.b,y.b)||x.c.odometro-y.c.odometro);
+  if(!rows.length){ ST.histMsg='Sin cargas en ese rango.'; render(); return; }
+  const q=s=>`"${String(s??'').replace(/"/g,'""')}"`;
+  const lines=['Fecha,Unidad,Cliente,Ciudad,Litros,Odómetro,Tanque lleno,Km recorridos (lleno a lleno),Km/L,Advertencias,Revisada,Capturó,Registrada'];
+  rows.forEach(({c,b})=>{
+    const s=seg.get(c.id), fl=c.flags||[];
+    lines.push([c.fecha, q(b.name), q(b.client), q(CITIES[b.city]?.name||b.city), Number(c.litros), c.odometro,
+      c.tanque_lleno?'Sí':'No (parcial)', s?.km??'', s?.km_l??'',
+      q(fl.map(f=>CARGA_FLAG_LBL[f]||f).join(' / ')), fl.length?(c.revisada_at?'Sí':'No'):'',
+      q(c.usuario_email||''), fechaHoraLocal(c.created_at)].join(','));
+  });
+  const blob=new Blob([String.fromCharCode(0xFEFF)+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob), a=document.createElement('a');
+  const ciudad=ST.cargaCity!=='all'?'_'+ST.cargaCity:'';
+  a.href=url; a.download=`historial_cargas${ciudad}_${desde||'inicio'}_a_${hasta||hoyLocal()}.csv`; a.click(); URL.revokeObjectURL(url);
+  const L=rows.reduce((s,x)=>s+Number(x.c.litros),0);
+  ST.histMsg=`${rows.length} carga${rows.length===1?'':'s'} · ${fmtL(L)} L descargados.`;
+  render();
 }
 function consumoCsv(){
   const {m,cur}=consumoRows();
