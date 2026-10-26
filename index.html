@@ -511,7 +511,7 @@ const SERVICE_TYPES = [
 const OC_TIPOS_SERVICIO = SERVICE_TYPES.map(t=>t.lbl);
 const OC_STATUS_LABELS = {pendiente:'Pendiente', autorizada:'Autorizada', pagada:'Pagada', rechazada:'Rechazada'};
 const OC_STATUS_PILL = {pendiente:'pill-mid', autorizada:'pill-blue', pagada:'pill-good', rechazada:'pill-worn'};
-const LOG_TYPES = {svc:'Aceite de motor', svc_trans:'Aceite de transmisión', svc_diff:'Aceite diferencial', oil:'Aceite / Preventivo', repair:'Correctivo', km:'Solo KM'};
+const LOG_TYPES = {svc:'Aceite de motor', svc_trans:'Revisión de transmisión', svc_diff:'Revisión de diferencial', oil:'Aceite / Preventivo', repair:'Correctivo', km:'Solo KM'};
 const REPAIR_TYPES = SERVICE_TYPES;
 const TIRE_EVENTS = {new:'Llanta nueva', rotate:'Rotación', recap:'Reencauche', retire:'Baja'};
 const CL_DOCS=['Licencia de Conducir','Póliza de Seguro','Tarjeta de Circulación','Placas','Extintor','Botiquín médico'];
@@ -870,13 +870,28 @@ function condLabel(c){ return c==='good'?'Buena':c==='mid'?'Desgaste medio':c===
 
 function oilInterval(bus){ return bus.oil_interval||(bus.type==='bus'?30000:10000); }
 
+// Único servicio con ciclo de aceite. Transmisión y diferencial son revisiones
+// (ver revisiones()), no cambios de aceite.
 function applicableServices(bus){
-  const svcs=[
-    {type:'svc',      label:'Aceite de motor',       interval:oilInterval(bus)},
-    {type:'svc_trans',label:'Aceite de transmisión', interval:90000},
-  ];
-  if(bus.type!=='urvan') svcs.push({type:'svc_diff',label:'Aceite diferencial',interval:60000});
-  return svcs;
+  return [{type:'svc', label:'Aceite de motor', interval:oilInterval(bus)}];
+}
+
+// Transmisión y diferencial: un aviso de "revisar", sin ciclo de aceite. El
+// primero sale a los 160,000 km; después, 50,000 km desde la última revisión
+// (sin bajar de 160,000).
+// Se guardan en service_logs con el mismo type que los cambios de aceite de
+// antes (svc_trans/svc_diff), así esos registros viejos cuentan como revisión.
+// Las Urvan no llevan diferencial.
+const REV_PRIMERA=160000, REV_CADA=50000;
+function revisiones(bus){
+  const r=[{type:'svc_trans',label:'Transmisión'}];
+  if(bus.type!=='urvan') r.push({type:'svc_diff',label:'Diferencial'});
+  return r.map(rv=>{
+    const last=busLogs(bus.id).find(l=>l.type===rv.type)||null;
+    // Nunca antes de los 160,000: hay registros viejos con km_after=0.
+    const nextKm=Math.max(REV_PRIMERA, last?(last.km_after||0)+REV_CADA:0);
+    return {...rv, last, nextKm, due:!!bus.km && bus.km>=nextKm};
+  });
 }
 
 function getServiceAlertFor(bus, svcType, interval){
@@ -908,7 +923,7 @@ function getSubtipo(log){
     const parts=(log.description||'').split(' · ');
     return parts.length>1?parts[0]:'—';
   }
-  const labels={oil:'Aceite / Preventivo',repair:'Correctivo',km:'Solo KM',tire:'Llanta',svc:'Aceite de motor',svc_trans:'Aceite de transmisión',svc_diff:'Aceite diferencial'};
+  const labels={oil:'Aceite / Preventivo',repair:'Correctivo',km:'Solo KM',tire:'Llanta',svc:'Aceite de motor',svc_trans:'Revisión de transmisión',svc_diff:'Revisión de diferencial'};
   return labels[log.type]||log.type||'—';
 }
 
@@ -1509,7 +1524,7 @@ function actionItems(bus){
     : A(`navigate('/unidad/${uid_}/checklist-nuevo')`,IC.insp,'ate','Hacer checklist','Inspección con diagrama de golpes');
   const ult=lastCarga(bus.id);
   h+=A(`ST.cargaBack=null;navigate('/unidad/${uid_}/carga')`,IC.fuel,'','Registrar carga',ult?`Última ${diasTxt(diasDesde(ult.fecha))} · ${fmtL(ult.litros)} L`:'Litros y odómetro');
-  h+=`<button class="action" onclick="ST.modal='actions-svc';render()"><span class="ic">${IC.oil}</span><span class="tx"><b>Completar servicio</b><span>Aceite de motor, transmisión o diferencial</span></span><span class="chev">›</span></button>`;
+  h+=`<button class="action" onclick="ST.modal='actions-svc';render()"><span class="ic">${IC.oil}</span><span class="tx"><b>Completar servicio</b><span>Aceite de motor · revisión de transmisión y diferencial</span></span><span class="chev">›</span></button>`;
   h+=A(`navigate('/unidad/${uid_}/reparacion')`,IC.taller,'','Registrar reparación','Correctivo, directo al historial');
   h+=A(`ST.tirePrePos=null;ST.tirePreEvent=null;ST.modal='tire';render()`,IC.tire,'','Evento de llanta','Nueva, rotación, reencauche o baja');
   if(isAdmin) h+=`<a class="action" href="/orden-compra.html" target="_blank" rel="noopener" onclick="ST.modal=null;render()"><span class="ic">${IC.cart}</span><span class="tx"><b>Orden de compra ↗</b><span>Solicitar refacción o trabajo de taller</span></span></a>`;
@@ -1530,6 +1545,10 @@ function renderActionsSheet(bus){
       const slug=ACEITE_SLUG_BY_TYPE[svc.type];
       const s=al.status==='none'?'Sin registro':al.status==='overdue'?fmt(al.overdueBy)+' km vencido':fmt(al.remaining)+' km restantes';
       body+=`<button class="action" onclick="ST.modal=null;navigate('/unidad/${uid_}/aceite/${slug}')"><span class="ic ${al.status==='overdue'?'red':''}">${IC.oil}</span><span class="tx"><b>${svc.label}</b><span>${s}</span></span></button>`;
+    });
+    revisiones(bus).forEach(r=>{
+      const s=r.due?`Toca revisar (desde ${fmt(r.nextKm)} km)`:`Próxima revisión a ${fmt(r.nextKm)} km`;
+      body+=`<button class="action" onclick="ST.modal=null;navigate('/unidad/${uid_}/mantenimiento')"><span class="ic ${r.due?'amber':''}">${IC.oil}</span><span class="tx"><b>Revisión de ${r.label.toLowerCase()}</b><span>${s}</span></span></button>`;
     });
   } else {
     body=`<div class="between" style="margin-bottom:6px"><h2 class="h2">Unidad ${bus.name}</h2><span class="small faint">${bus.km?fmt(bus.km)+' km':'sin km'}</span></div>${actionItems(bus)}`;
@@ -1552,6 +1571,8 @@ function unitStatus(bus){
   let tireBad=null;
   Object.entries(bus.tires||{}).forEach(([pos,t])=>{ if(t){ const km=tireKM(t,bus.km); if(km>=70000 && (!tireBad||km>tireBad.km)) tireBad={pos,km}; } });
   if(tireBad) return {group:'atencion', badge:'Excede km', cls:'b-warn', reason:`${POS_NAMES[tireBad.pos]||tireBad.pos} · ${fmt(tireBad.km)} km`};
+  const rev=revisiones(bus).find(r=>r.due);
+  if(rev) return {group:'atencion', badge:`Revisar ${rev.label.toLowerCase()}`, cls:'b-warn', reason:`Le tocaba a los ${fmt(rev.nextKm)} km`};
   if(soon) return {group:'vencer', badge:`Servicio en ${fmt(soon.rem)} km`, cls:'b-warn', reason:soon.label};
   if(bus.client==='Pasaje'){
     const hoy=ST.chequeos.some(c=>c.bus_id===bus.id && c.fecha===today());
@@ -1634,11 +1655,12 @@ function resumenAlerts(bus){
   }
   applicableServices(bus).forEach(svc=>{
     const al=getServiceAlertFor(bus,svc.type,svc.interval);
-    const tipoSlug={svc:'motor',svc_trans:'transmision',svc_diff:'diferencial'}[svc.type];
+    const tipoSlug=ACEITE_SLUG_BY_TYPE[svc.type];
     if(al.status==='none') out.push({title:`${svc.label} sin registro`, desc:'Registra el último cambio para arrancar el ciclo.', cta:'Registrar', lvl:'data', href:`/unidad/${uid_}/aceite/${tipoSlug}`});
     else if(al.status==='overdue') out.push({title:`${svc.label} vencido`, desc:`${fmt(al.overdueBy)} km pasados.`, cta:'Registrar', solid:true, lvl:'red', href:`/unidad/${uid_}/aceite/${tipoSlug}`});
     else if(al.remaining<=1000) out.push({title:`${svc.label} por vencer`, desc:`Faltan ${fmt(al.remaining)} km.`, cta:'Registrar', lvl:'amber', href:`/unidad/${uid_}/aceite/${tipoSlug}`});
   });
+  revisiones(bus).filter(r=>r.due).forEach(r=>out.push({title:`Revisar ${r.label.toLowerCase()}`, desc:`Le tocaba a los ${fmt(r.nextKm)} km.`, cta:'Ver', lvl:'amber', href:`/unidad/${uid_}/mantenimiento`}));
   Object.entries(bus.tires||{}).forEach(([pos,t])=>{ if(t && tireKM(t,bus.km)>=70000) out.push({title:`Llanta ${POS_NAMES[pos]||pos}`, desc:`${fmt(tireKM(t,bus.km))} km recorridos.`, cta:'Ver', lvl:'amber', href:`/unidad/${uid_}/mantenimiento`}); });
   // Combustible. "Sin carga" es captura atrasada, no trabajo: va como 'data'
   // (plegado en Pendientes y fuera del badge); en Inicio sale en su tarjeta.
@@ -1810,9 +1832,8 @@ function renderActionScreen(bus){
   let title='', body='', save='', backTo='/unidad/'+uid_;
   if(A==='aceite'){
     const svcType=ACEITE_SLUGS[ST.actionParam]||'svc';
-    const labels={svc:'Aceite de motor',svc_trans:'Aceite de transmisión',svc_diff:'Aceite diferencial'};
-    const pfx={svc:'e',svc_trans:'t',svc_diff:'d'}[svcType];
-    title=labels[svcType]||'Aceite'; backTo='/unidad/'+uid_+'/servicio';
+    const pfx='e';
+    title='Aceite de motor'; backTo='/unidad/'+uid_+'/servicio';
     body=aceiteBody(bus,svcType,pfx);
     save=`doSaveServiceLog('${bus.id}','${svcType}','${pfx}')`;
   } else if(A==='reparacion'){
@@ -3050,7 +3071,7 @@ function renderStats(bus){
 function renderService(bus){
   const uid_=encodeURIComponent(bus.id);
   const svcs=applicableServices(bus);
-  const tipoSlug={svc:'motor',svc_trans:'transmision',svc_diff:'diferencial'};
+  const tipoSlug=ACEITE_SLUG_BY_TYPE;
   let h='';
   svcs.forEach(svc=>{
     const al=getServiceAlertFor(bus,svc.type,svc.interval);
@@ -3077,7 +3098,38 @@ function renderService(bus){
     }
     h+=`</div>`;
   });
+  revisiones(bus).forEach(r=>{
+    const badge=r.due?`<span class="badge b-warn"><i class="bdot"></i>Revisar</span>`:`<span class="badge b-ok"><i class="bdot"></i>Al día</span>`;
+    const conf=ST.revConfirm===bus.id+'|'+r.type;
+    const sub=r.last?`Última: ${r.last.date} · ${fmt(r.last.km_after||0)} km`:`Primera revisión a los ${fmt(REV_PRIMERA)} km`;
+    h+=`<div class="rcard">
+      <div class="cardhead" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div class="ctitle" style="font-family:'Familjen Grotesk',sans-serif;font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;color:var(--text2)">Revisión de ${r.label.toLowerCase()}</div>${badge}</div>
+      <div class="big" style="font-family:'Roboto Mono',monospace;font-size:22px;font-weight:600">${fmt(r.nextKm)} <span style="font-size:12px;color:var(--text2);font-family:Inter">km ${r.due?'— ya toca':'próxima revisión'}</span></div>
+      <div class="sub" style="font-size:12.5px;color:var(--text2);margin-top:3px">${sub} · luego cada ${fmt(REV_CADA)} km</div>`;
+    if(r.due) h+=`<button class="${conf?'btn-primary-lg':'btn-ghost-lg'}" style="margin-top:12px" onclick="doMarcarRevision('${bus.id}','${r.type}')">${conf?`¿Confirmar revisado a ${fmt(bus.km)} km?`:'Marcar revisado'}</button>`;
+    h+=`</div>`;
+  });
   return h;
+}
+
+// Dos toques: el primero pide confirmar, el segundo guarda la revisión con el
+// odómetro actual. Reinicia el aviso: el siguiente sale 50,000 km después.
+async function doMarcarRevision(busId,type){
+  const key=busId+'|'+type;
+  if(ST.revConfirm!==key){ ST.revConfirm=key; render(); return; }
+  ST.revConfirm=null;
+  const bus=ST.buses.find(b=>b.id===busId);
+  const rv=bus&&revisiones(bus).find(r=>r.type===type);
+  if(!rv||!bus.km){ render(); return; }
+  const lbl=rv.label.toLowerCase();
+  const log={id:uid(),bus_id:busId,city:bus.city,type,date:today(),description:`Revisión de ${lbl}`,
+    cost:0,km_after:bus.km,technician:ST.authEmail||null,ts:Date.now()};
+  ST.logs.unshift(log);
+  render();
+  const {error}=await dbSaveLog(log);
+  if(error){ ST.logs=ST.logs.filter(l=>l.id!==log.id); showToast('Error al guardar. Intenta de nuevo.','error'); return; }
+  showToast(`Revisión de ${lbl} registrada`);
 }
 
 function renderChecklist(bus){
@@ -3423,7 +3475,7 @@ async function doSaveServiceLog(busId, svcType, pfx){
   const kmRaw=parseInt(kmVal)||0;
   const brand=document.getElementById(`sv-${pfx}-brand`).value.trim();
   const cost=parseFloat(costVal)||0;
-  const svcLabels={svc:'Aceite de motor',svc_trans:'Aceite de transmisión',svc_diff:'Aceite diferencial'};
+  const svcLabels={svc:'Aceite de motor'};
   const parts=[svcLabels[svcType]||svcType];
   if(brand) parts.push(brand);
   if(svcType==='svc'){
@@ -4316,8 +4368,8 @@ const LEGACY_TAB = { status:'resumen', servicio:'mantenimiento', llantas:'manten
   reparaciones:'mantenimiento', checklist:'inspecciones', chequeo:'inspecciones', historial:'inspecciones' };
 const HUB_SLUGS   = { reportes:'report', chequeos:'chequeos', compras:'compras', unidades:'fleet', cargas:'cargas' };
 const HUB_SLUG_BY_VIEW = Object.fromEntries(Object.entries(HUB_SLUGS).map(([slug,view])=>[view,slug]));
-const ACEITE_SLUGS = { motor:'svc', transmision:'svc_trans', diferencial:'svc_diff' };
-const ACEITE_SLUG_BY_TYPE = { svc:'motor', svc_trans:'transmision', svc_diff:'diferencial' };
+const ACEITE_SLUGS = { motor:'svc' };
+const ACEITE_SLUG_BY_TYPE = { svc:'motor' };
 // Acciones que son pantalla propia (header pegajoso + barra de guardar inferior).
 const ACTION_SLUGS = new Set(['aceite','reparacion','registro','checklist-nuevo','golpes','chequeo-nuevo','odometro','carga']);
 
