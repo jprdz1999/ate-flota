@@ -4494,6 +4494,11 @@ async function boot(){
 }
 boot();
 if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{})); }
+
+// La rueda del mouse sobre un campo numérico con foco cambia el valor (montos,
+// odómetros). Al girarla se quita el foco: la página hace scroll y el número
+// solo cambia escribiéndolo.
+document.addEventListener('wheel',e=>{ const el=document.activeElement; if(el && el.type==='number' && el===e.target) el.blur(); },{passive:true});
 </script>
 </body>
 </html>
