@@ -499,6 +499,7 @@ const SERVICE_TYPES = [
   {id:'mecanica',     lbl:'Mecánica general'},
   {id:'motor',        lbl:'Motor'},
   {id:'muelles',      lbl:'Muelles/Amortiguadores'},
+  {id:'papeleria',    lbl:'Papelería y oficina'},
   {id:'refacciones',  lbl:'Refacciones'},
   {id:'enfriamiento', lbl:'Sistema de enfriamiento'},
   {id:'transmision',  lbl:'Transmisión'},
@@ -854,6 +855,11 @@ function escHtml(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':
 function authCities(){ return ST.auth==='all'?null:ST.auth.split(','); }
 function adminFilterCities(){ return ST.auth==='all'?Object.keys(CITIES).filter(k=>k!=='admin'):ST.auth.split(','); }
 function cityBuses(){ const c=authCities(); return ST.buses.filter(b=>!c||c.includes(b.city)); }
+// "Oficinas <ciudad>": renglón de buses con type='oficina' para que papelería y
+// gastos de oficina queden en órdenes de compra y Taller como si fuera una
+// unidad. No es vehículo: sin km, aceite, llantas, cargas, inspecciones ni avisos.
+function esOficina(b){ return !!b && b.type==='oficina'; }
+function vehiculos(){ return cityBuses().filter(b=>!esOficina(b)); }
 // Las unidades se identifican por numero, no por texto. localeCompare ordenaba
 // alfabeticamente: "141" caia antes que "22" y la "96" hasta despues de la
 // "915", asi que el capturista no la encontraba y concluia que no estaba dada
@@ -1338,12 +1344,12 @@ function lastInspection(bus){
   return [cl?.date,cq?.fecha].filter(Boolean).sort().pop()||null;
 }
 function daysSince(d){ return d?Math.round((new Date(today())-new Date(d))/86400000):null; }
-function sinInspeccion(bus){ const d=daysSince(lastInspection(bus)); return d==null||d>=14; }
+function sinInspeccion(bus){ if(esOficina(bus)) return false; const d=daysSince(lastInspection(bus)); return d==null||d>=14; }
 const FECHA_LARGA=()=>{ const s=new Date().toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long'}); return s.charAt(0).toUpperCase()+s.slice(1); };
 
 function renderHome(){
   const isAdmin=ST.role==='admin';
-  const buses=cityBuses();
+  const buses=vehiculos();
   const rows=buses.map(b=>({b,s:unitStatus(b)}));
   const golpes=rows.filter(r=>r.s.badge==='Golpe nuevo').length;
   const venc=rows.filter(r=>r.s.badge==='Servicio vencido').length;
@@ -1426,6 +1432,7 @@ function refreshFleetList(){ const el=document.getElementById('fleet-list'); if(
 
 // ─── PANTALLA DE UNIDAD ──────────────────────────────────────────────────────
 function renderFichaScreen(bus){
+  if(esOficina(bus)) return renderOficinaScreen(bus);
   let h=uheadUnit(bus,{tabs:true});
   h+=`<div class="pad">`;
   if(ST.tab==='mantenimiento')     h+=renderMantenimiento(bus);
@@ -1437,6 +1444,19 @@ function renderFichaScreen(bus){
   if(ST.modal==='tire') h+=renderTireModal(bus);
   if(ST.modal==='actions'||ST.modal==='actions-svc') h+=renderActionsSheet(bus);
   return h;
+}
+
+// Oficina: sin pestañas ni acciones de vehículo; solo el historial de gastos.
+function renderOficinaScreen(bus){
+  const uid_=encodeURIComponent(bus.id);
+  let h=uheadUnit(bus,{odo:false});
+  h+=`<div class="pad">`;
+  if(ST.role==='admin') h+=`<a class="btn-primary-lg" style="display:block;text-align:center;text-decoration:none;margin-bottom:10px" href="/orden-compra.html" target="_blank" rel="noopener">Orden de compra ↗</a>`;
+  h+=`<button class="btn-ghost-lg" style="margin-bottom:12px" onclick="navigate('/unidad/${uid_}/reparacion')">+ Registrar gasto</button>`;
+  h+=`<div class="grouphead" style="padding-left:2px">Historial de gastos</div>`;
+  h+=renderTallerHist(tallerRows(bus.id),{isAdmin:ST.role==='admin',canDel:true});
+  h+=`</div>`;
+  return shell(h,{tabbar:true});
 }
 
 // Dashboard: estado de un vistazo, golpes, servicios, llantas, pendientes, historial.
@@ -1558,6 +1578,7 @@ function renderActionsSheet(bus){
 
 // Estado accionable de una unidad: grupo de severidad + badge de texto + motivo.
 function unitStatus(bus){
+  if(esOficina(bus)) return {group:'aldia', badge:'Oficina', cls:'b-none', reason:'Gastos de oficina'};
   const nuevos=activeDanos(bus.id).filter(d=>d.fecha_deteccion===today());
   const seg=activeDanos(bus.id).filter(d=>d.severidad==='seguridad');
   if(nuevos.length||seg.length){ const d=nuevos[0]||seg[0]; return {group:'atencion', badge:'Golpe nuevo', cls:'b-bad', reason:d.descripcion||'Detectado en inspección'}; }
@@ -1639,6 +1660,7 @@ function uheadUnit(bus,opts){
 // ─── TAB RESUMEN: identidad + alertas accionables + acción primaria + golpes ──
 // Deriva las alertas accionables del Resumen (odómetro, aceite, pendientes).
 function resumenAlerts(bus){
+  if(esOficina(bus)) return [];
   const uid_=encodeURIComponent(bus.id);
   const esPasaje=bus.client==='Pasaje';
   const out=[];
@@ -1837,7 +1859,7 @@ function renderActionScreen(bus){
     body=aceiteBody(bus,svcType,pfx);
     save=`doSaveServiceLog('${bus.id}','${svcType}','${pfx}')`;
   } else if(A==='reparacion'){
-    title='Registrar reparación'; backTo='/unidad/'+uid_+'/reparaciones';
+    title=esOficina(bus)?'Registrar gasto':'Registrar reparación'; backTo='/unidad/'+uid_+(esOficina(bus)?'':'/reparaciones');
     body=reparacionBody(bus); save=`doSaveRepairLog('${bus.id}')`;
   } else if(A==='registro'){
     title='Nuevo registro'; backTo='/unidad/'+uid_+'/historial';
@@ -1888,12 +1910,13 @@ function aceiteBody(bus,svcType,pfx){
   return h;
 }
 function reparacionBody(bus){
+  const ofi=esOficina(bus);  // oficina: sin odómetro, tipo papelería por defecto
   return `<div class="form-row"><label>Fecha</label><input type="date" id="rp-date" value="${today()}"></div>
-    <div class="form-row"><label>Kilometraje de la reparación *</label><input type="number" id="rp-km" value="${bus.km}" min="0" inputmode="numeric">
-      <div style="font-size:11px;color:var(--text3);margin-top:4px">Odómetro cuando se hizo (puede ser una fecha/km pasado).</div></div>
+    ${ofi?`<input type="hidden" id="rp-km" value="0">`:`<div class="form-row"><label>Kilometraje de la reparación *</label><input type="number" id="rp-km" value="${bus.km}" min="0" inputmode="numeric">
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">Odómetro cuando se hizo (puede ser una fecha/km pasado).</div></div>`}
     <div class="form-row"><label>Tipo de reparación *</label>
       <select id="rp-type"><option value="">— Selecciona tipo —</option>
-        ${REPAIR_TYPES.map(r=>`<option value="${r.id}">${r.lbl}</option>`).join('')}</select></div>
+        ${REPAIR_TYPES.map(r=>`<option value="${r.id}"${ofi&&r.id==='papeleria'?' selected':''}>${r.lbl}</option>`).join('')}</select></div>
     <div class="form-row"><label>Descripción de reparación *</label>
       <textarea id="rp-desc" rows="3" placeholder="Describe el trabajo realizado…"></textarea></div>
     <div class="form-row"><label>Costo ($) *</label><input type="number" id="rp-cost" value="" min="0" placeholder="0" inputmode="numeric"></div>`;
@@ -2308,7 +2331,7 @@ function renderChqHub(){
 // trabajo pendiente sino captura atrasada.
 function pendientesItems(){
   const items=[];
-  cityBuses().forEach(bus=>{
+  vehiculos().forEach(bus=>{
     const chq=ST.chequeos.filter(c=>c.bus_id===bus.id&&!c.alerta_atendida&&c.dano_nuevo_detectado);
     chq.forEach(c=>items.push({bus, lvl:c.severidad_maxima==='seguridad'?'red':'amber',
       title:`Golpe nuevo en chequeo${c.severidad_maxima==='seguridad'?' · seguridad':''}`,
@@ -2391,11 +2414,11 @@ function renderChqZonaSearch(){
     <div class="form-row" style="margin:0"><label>Unidad</label>
       <select onchange="ST.chqZonaBusId=this.value;render()">
         <option value="all">Todas las unidades</option>
-        ${ST.buses.slice().sort(cmpUnidad).map(b=>`<option value="${b.id}"${ST.chqZonaBusId===b.id?' selected':''}>${b.name}</option>`).join('')}
+        ${ST.buses.filter(b=>!esOficina(b)).sort(cmpUnidad).map(b=>`<option value="${b.id}"${ST.chqZonaBusId===b.id?' selected':''}>${b.name}</option>`).join('')}
       </select></div>
   </div></div>`;
   if(!ST.chqZonaSel) return h+`<div class="empty-state">Selecciona una zona para buscar</div>`;
-  const buses=ST.chqZonaBusId==='all'?ST.buses:ST.buses.filter(b=>b.id===ST.chqZonaBusId);
+  const buses=ST.chqZonaBusId==='all'?ST.buses.filter(b=>!esOficina(b)):ST.buses.filter(b=>b.id===ST.chqZonaBusId);
   let any=false;
   buses.forEach(b=>{
     const list=busChequeos(b.id).slice().reverse(); // orden cronológico ascendente
@@ -3837,11 +3860,11 @@ function cargaCheck(bus,d){
 
 // ── Lista: más días sin carga primero (nunca cargadas hasta arriba) ──
 function cargaListOrder(buses){
-  return (buses||cityBuses()).map(b=>({b,d:diasDesde(lastCarga(b.id)?.fecha)}))
+  return (buses||vehiculos()).map(b=>({b,d:diasDesde(lastCarga(b.id)?.fecha)}))
     .sort((x,y)=>((y.d??Infinity)-(x.d??Infinity))||cmpUnidad(x.b,y.b)).map(x=>x.b.id);
 }
 function cargaHubBuses(){
-  let buses=cityBuses();
+  let buses=vehiculos();
   if(ST.cargaCity!=='all') buses=buses.filter(b=>b.city===ST.cargaCity);
   const q=ST.cargaQ.trim().toLowerCase();
   if(q) buses=buses.filter(b=>String(b.name).toLowerCase().includes(q));
@@ -3852,8 +3875,8 @@ function cargaHubBuses(){
 function renderCargasHub(){
   const isAdmin=ST.role==='admin';
   if(ST.cargaTab==='revision'&&!isAdmin) ST.cargaTab='registrar';
-  const scope=cityBuses().filter(b=>ST.cargaCity==='all'||b.city===ST.cargaCity);
-  const cities=[...new Set(cityBuses().map(b=>b.city))];
+  const scope=vehiculos().filter(b=>ST.cargaCity==='all'||b.city===ST.cargaCity);
+  const cities=[...new Set(vehiculos().map(b=>b.city))];
   const nRev=revisionPendientes().length;
   const T=(id,lbl)=>`<button class="tab${ST.cargaTab===id?' active':''}" onclick="cargaSetTab('${id}')">${lbl}</button>`;
   let h=`<div class="hero"><h1 class="h1">Cargas</h1><span class="pill2">${scope.length} unidades</span></div>`;
@@ -4103,7 +4126,7 @@ function rendCaida(bus){
   return {kml:last.kml, avg, pct:Math.round((1-last.kml/avg)*100), fecha:last.carga.fecha};
 }
 function revisionPendientes(){
-  const ids=new Set(cityBuses().map(b=>b.id));
+  const ids=new Set(vehiculos().map(b=>b.id));
   return ST.cargasRevision.filter(c=>ids.has(c.bus_id)&&!c.revisada_at);
 }
 // Tarjeta de Inicio. No aparece si en este alcance nadie usa Cargas todavía.
@@ -4147,7 +4170,7 @@ function consumoMover(n){
 }
 function consumoRows(){
   const m=ST.consumoMes||mesActual();
-  const allowed=new Map(cityBuses().filter(b=>ST.cargaCity==='all'||b.city===ST.cargaCity).map(b=>[b.id,b]));
+  const allowed=new Map(vehiculos().filter(b=>ST.cargaCity==='all'||b.city===ST.cargaCity).map(b=>[b.id,b]));
   const rows=(ST.consumo||[]).filter(r=>allowed.has(r.bus_id));
   const prevKml=Object.fromEntries(rows.filter(r=>r.mes.startsWith(mesMas(m,-1))).map(r=>[r.bus_id,r.km_l!=null?Number(r.km_l):null]));
   const cur=rows.filter(r=>r.mes.startsWith(m)).map(r=>({...r, bus:allowed.get(r.bus_id), litros:Number(r.litros), km:r.km!=null?Number(r.km):null,
@@ -4267,7 +4290,7 @@ async function descargarHistorialCargas(){
     ST.histLoading=false; ST.histMsg='No se pudo descargar: '+cargaErrMsg(e); ST.histErr=true; render(); return;
   }
   ST.histLoading=false;
-  const byId=new Map(cityBuses().map(b=>[b.id,b]));
+  const byId=new Map(vehiculos().map(b=>[b.id,b]));
   const seg=new Map(rend.map(r=>[r.carga_id,r]));
   const rows=cargas.map(c=>({c,b:byId.get(c.bus_id)}))
     .filter(x=>x.b && (ST.cargaCity==='all'||x.b.city===ST.cargaCity))
@@ -4302,7 +4325,7 @@ function consumoCsv(){
 
 // ── Fase 2: revisión de cargas con advertencia (admin) ──
 function renderRevision(){
-  const ids=new Set(cityBuses().filter(b=>ST.cargaCity==='all'||b.city===ST.cargaCity).map(b=>b.id));
+  const ids=new Set(vehiculos().filter(b=>ST.cargaCity==='all'||b.city===ST.cargaCity).map(b=>b.id));
   const list=revisionPendientes().filter(c=>ids.has(c.bus_id)).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha)));
   if(!list.length) return `<div class="empty-state">Sin cargas por revisar.</div>`;
   let h=`<div class="small faint" style="margin:0 2px 10px">Cargas guardadas con advertencia. Márcalas correctas o elimínalas. Eliminar una carga no regresa el odómetro: si la lectura estaba mal, usa Ajustar odómetro.</div>`;

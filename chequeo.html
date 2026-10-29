@@ -299,7 +299,7 @@ function renderApp(){
 
 function renderPicker(){
   const q=chqNormalize(ST.pickerQuery);
-  const all=cityBuses().slice().sort(cmpUnidad);
+  const all=cityBuses().filter(b=>b.type!=='oficina').sort(cmpUnidad);  // oficinas no se inspeccionan
   const list=q?all.filter(b=>chqNormalize(b.name).includes(q)||chqNormalize(b.client).includes(q)):all;
   let h=`<input type="text" class="chq-search" placeholder="Buscar unidad por nombre o cliente…" value="${escHtml(ST.pickerQuery)}" oninput="ST.pickerQuery=this.value;render()" autofocus>`;
   if(!list.length){
