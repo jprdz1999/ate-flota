@@ -488,10 +488,12 @@ const CLIENTS = ['Bimbo','Barcel','Oxxo','Maersk','Sensata','Dreams Jade','Bacho
 // cuadren. Antes eran dos listas distintas que solo coincidian en "Electrico"
 // y "Otro". Alfabetico, con "Otro" al final a proposito.
 // OJO: no hay archivo JS compartido — si cambias esta lista, actualiza tambien
-// TIPOS_SERVICIO en orden-compra.html.
+// TIPOS_SERVICIO en orden-compra.html Y el check purchase_orders_tipo_servicio_check
+// en Supabase (si no, la orden de compra con el tipo nuevo no se guarda).
 const SERVICE_TYPES = [
   {id:'ac',           lbl:'A/C'},
   {id:'compresor',    lbl:'Compresor'},
+  {id:'consumibles',  lbl:'Consumibles'},
   {id:'electrico',    lbl:'Eléctrico'},
   {id:'frenos',       lbl:'Frenos'},
   {id:'hojalateria',  lbl:'Hojalatería y pintura'},
