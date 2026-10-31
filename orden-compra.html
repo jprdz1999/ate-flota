@@ -582,8 +582,11 @@ async function doSaveOrder(){
   // para que el recibo se lea igual que la lista.
   const chosen=ocSelectedBuses();
   const parts=ocSplit(Math.round(monto*100), chosen.length);
+  // Varias unidades = un solo pago: grupo_id liga los renglones para que el
+  // Taller los muestre como una orden y se puedan pagar juntos.
+  const grupo=chosen.length>1 ? crypto.randomUUID() : null;
   const orders=chosen.map((b,i)=>({
-    bus_id:b.id, tipo_servicio:tipo, concepto, proveedor,
+    bus_id:b.id, grupo_id:grupo, tipo_servicio:tipo, concepto, proveedor,
     cuenta_referencia:cuenta||null, banco:banco||null, monto:parts[i],
     solicita
   }));

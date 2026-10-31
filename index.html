@@ -54,6 +54,7 @@
   .pay-row .pay-actions{grid-column:auto}
 }
 .li-title{font-size:13px;font-weight:500;margin-bottom:2px;color:var(--text)}
+.oc-grupo{display:inline-block;margin-top:3px;padding:1px 7px;border-radius:999px;font-size:10.5px;font-weight:600;white-space:nowrap;background:var(--blue-bg,#e8f0fe);color:var(--blue,#1a56db)}
 .li-meta{font-size:11px;color:var(--text2)}
 .li-cost{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap}
 .li-cost.zero{font-weight:400;color:var(--text3);font-size:12px}
@@ -1060,6 +1061,19 @@ function ocDestino(o){
   // fue a los renglones de cada unidad.
   const cierre={asignada:' · repartida', consumida:' · consumida'}[o.stock_estado]||'';
   return `Stock · ${ciudad}${cierre}`;
+}
+// Orden repartida entre varias unidades: un renglón por unidad, pero un solo
+// pago. grupo_id los liga; aquí se resume el grupo para marcarlo en el Taller.
+function ocGrupo(o){
+  if(!o.grupo_id) return null;
+  const m=ST.ordenes.filter(x=>x.grupo_id===o.grupo_id).sort((a,b)=>a.folio_num-b.folio_num);
+  if(m.length<2) return null;
+  return {m, n:m.length, i:m.indexOf(o)+1, total:m.reduce((s,x)=>s+Number(x.monto||0),0),
+    rango:`${m[0].folio}–${m[m.length-1].folio}`};
+}
+function ocGrupoBadge(o){
+  const g=ocGrupo(o); if(!g) return '';
+  return `<span class="oc-grupo" title="Un solo pago repartido entre ${g.n} unidades">1 pago · ${g.i}/${g.n} · ${escHtml(g.rango)} · total ${mxn(g.total)}</span>`;
 }
 // Reparte en centavos para que la suma de las partes de exactamente el total;
 // el sobrante del redondeo se carga de a un centavo a las primeras unidades.
@@ -2554,6 +2568,14 @@ async function doChangeOrdenStatus(id,status){
   else if(status==='rechazada') showToast('Orden anulada');
   else showToast('Status actualizado');
 }
+// Un solo pago repartido: marca pagadas todas las órdenes pendientes del grupo.
+async function doPagarGrupo(grupoId){
+  const pend=ST.ordenes.filter(o=>o.grupo_id===grupoId&&ocPorPagar(o.status)&&ocVisible(o));
+  if(!pend.length) return;
+  const total=pend.reduce((s,o)=>s+Number(o.monto||0),0);
+  if(!confirm(`¿Marcar pagadas ${pend.length} órdenes (${pend.map(o=>o.folio).join(', ')}) por ${mxn(total)} en total?`)) return;
+  for(const o of pend) await doChangeOrdenStatus(o.id,'pagada');
+}
 // Panel de acción del taller: lo que falta pagar. Marcar la casilla paga la
 // orden y la manda a la bitácora de la unidad (ver syncOrdenBitacora).
 function renderPendientesPago(){
@@ -2582,6 +2604,7 @@ function renderPendientesPago(){
       <div>
         <div class="li-title">${escHtml(o.folio)} · ${escHtml(ocDestino(o))} · ${escHtml(o.proveedor)}</div>
         <div class="li-meta">${String(o.created_at).slice(0,10)} &nbsp;·&nbsp; ${escHtml(o.tipo_servicio)} &nbsp;·&nbsp; ${escHtml(o.concepto)}</div>
+        ${ocGrupoBadge(o)}
       </div>
       <div class="pay-amt">
         <span class="amt">${mxn(o.monto)}</span>
@@ -2589,6 +2612,8 @@ function renderPendientesPago(){
       </div>
       <div class="pay-actions">
         <button class="btn sm danger" onclick="doAnularOrden('${o.id}')">Anular</button>
+        ${(()=>{ const g=ocGrupo(o), np=g?g.m.filter(x=>ocPorPagar(x.status)).length:0;
+          return np>1?`<button class="btn sm" onclick="doPagarGrupo('${o.grupo_id}')">Pagar las ${np} (${mxn(g.m.filter(x=>ocPorPagar(x.status)).reduce((s,x)=>s+Number(x.monto||0),0))})</button>`:''; })()}
         <button class="btn sm primary" onclick="doChangeOrdenStatus('${o.id}','pagada')">Marcar pagada</button>
       </div>
     </div>`;
@@ -2855,12 +2880,12 @@ function renderComprasHub(){
       <tbody>`;
   rows.forEach(o=>{
     h+=`<tr>
-      <td style="padding-left:1.25rem;white-space:nowrap;font-weight:500">${escHtml(o.folio)}</td>
+      <td style="padding-left:1.25rem;white-space:nowrap;font-weight:500">${escHtml(o.folio)}${ocGrupo(o)?`<div><span class="oc-grupo" title="${escHtml(ocGrupo(o).rango)} · total ${mxn(ocGrupo(o).total)}">1 pago · ${ocGrupo(o).i}/${ocGrupo(o).n}</span></div>`:''}</td>
       <td style="white-space:nowrap;color:var(--text2)">${o.created_at.slice(0,10)}</td>
       <td style="font-weight:500;white-space:nowrap">${escHtml(ocDestino(o))}</td>
       <td style="color:var(--text2);white-space:nowrap">${escHtml(o.tipo_servicio)}</td>
       <td style="color:var(--text2)">${escHtml(o.proveedor)}</td>
-      <td style="text-align:right;font-weight:600;white-space:nowrap">${mxn(o.monto)}</td>
+      <td style="text-align:right;font-weight:600;white-space:nowrap">${mxn(o.monto)}${ocGrupo(o)?`<div style="font-size:10.5px;font-weight:500;color:var(--text2)">de ${mxn(ocGrupo(o).total)}</div>`:''}</td>
       <td style="padding-right:1.25rem">
         <select class="pill ${OC_STATUS_PILL[o.status]||'pill-mid'}" style="border:none;width:auto;padding:2px 20px 2px 9px;font-size:11px;font-weight:600" onchange="doChangeOrdenStatus('${o.id}',this.value)">
           ${Object.entries(OC_STATUS_LABELS).map(([k,v])=>`<option value="${k}"${o.status===k?' selected':''}>${v}</option>`).join('')}
@@ -2903,7 +2928,7 @@ function renderTallerHistHub(buses){
 function exportComprasCSV(){
   const rows=applyComprasFilters();
   if(!rows.length) return;
-  const headers=['Folio','Fecha','Unidad','Tipo de servicio','Proveedor','Cuenta/Referencia','Monto','Solicita','Status'];
+  const headers=['Folio','Fecha','Unidad','Tipo de servicio','Proveedor','Cuenta/Referencia','Monto','Solicita','Status','Pago (folios)','Total del pago'];
   const lines=[headers.join(',')];
   rows.forEach(o=>{
     const cells=[
@@ -2915,7 +2940,9 @@ function exportComprasCSV(){
       `"${(o.cuenta_referencia||'').replace(/"/g,'""')}"`,
       o.monto,
       `"${(o.solicita||'').replace(/"/g,'""')}"`,
-      OC_STATUS_LABELS[o.status]||o.status
+      OC_STATUS_LABELS[o.status]||o.status,
+      ocGrupo(o)?.rango||'',
+      ocGrupo(o)?.total??''
     ];
     lines.push(cells.join(','));
   });
