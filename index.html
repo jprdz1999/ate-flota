@@ -3763,7 +3763,7 @@ function exportCSV(){
 const CARGA_RECIENTES=20;      // por unidad (vista cargas_recientes): recencia, km/L e historial
 const CARGA_SALTO_KM=1500;
 const CARGA_REND_TOL=0.35;
-const CARGA_FLAG_LBL={km_menor:'Odómetro menor', salto_km:'Salto de km', exceso_litros:'Excede tanque', rendimiento_anomalo:'Rendimiento atípico'};
+const CARGA_FLAG_LBL={km_menor:'Odómetro menor', km_mayor:'Mayor a carga posterior', salto_km:'Salto de km', exceso_litros:'Excede tanque', rendimiento_anomalo:'Rendimiento atípico'};
 
 // Se traen las últimas CARGA_RECIENTES cargas de cada unidad (no una ventana
 // de días): el tamaño queda acotado a unidades × 20 aunque el historial crezca,
@@ -3802,6 +3802,18 @@ function fechaCorta(f){ return new Date(f+'T12:00:00').toLocaleDateString('es-MX
 function fmtL(n){ return Number(n||0).toLocaleString('es-MX',{maximumFractionDigits:1}); }
 function busCargas(busId){ return ST.cargas.filter(c=>c.bus_id===busId).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha))||b.odometro-a.odometro); }
 function lastCarga(busId){ return busCargas(busId)[0]||null; }
+// Cargas vecinas de una captura con fecha `fecha`: la anterior es la de mayor
+// odómetro con fecha <= fecha; la posterior, la de menor odómetro con fecha
+// posterior. Una captura atrasada cae entre las dos. Solo cargas: checklists,
+// reparaciones y servicios mueven buses.km pero NO son referencia de cargas.
+function cargaVecinas(busId,fecha){
+  let prev=null, next=null;
+  busCargas(busId).forEach(c=>{
+    if(String(c.fecha)<=fecha){ if(!prev||c.odometro>prev.odometro) prev=c; }
+    else if(!next||c.odometro<next.odometro) next=c;
+  });
+  return {prev,next};
+}
 function parseLitros(s){ const t=String(s??'').trim().replace(',','.'); if(!t) return null; const n=Number(t); return Number.isFinite(n)?n:NaN; }
 // Nombres que no caben en el tamaño normal ("BUSSTAR 360", "768 / 776"): en la
 // lista y en la captura usan letra más chica para no comerse el resto del renglón.
@@ -3837,11 +3849,14 @@ function cargaCheck(bus,d){
   if(l==null||Number.isNaN(l)||l<=0) err.push('Captura los litros (mayor a 0).');
   if(o==null) err.push('Captura el odómetro.');
   if(err.length) return {err,warn};
-  // "Última lectura" = buses.km, el odómetro vivo: puede venir de una carga, un
-  // checklist o un servicio. Es la misma referencia que el delta en pantalla.
-  const last=bus.km||0;
-  if(last>0 && o<last) warn.push({flag:'km_menor', msg:`El último registro es mayor (${fmt(last)} km), ¿seguro?`});
-  else if(last>0 && o-last>CARGA_SALTO_KM) warn.push({flag:'salto_km', msg:`Salto de ${fmt(o-last)} km desde la última lectura.`});
+  // Referencia = la carga anterior a esta fecha (no buses.km, que también lo
+  // mueven checklists y servicios). Sin cargas previas, buses.km sirve solo
+  // para cachar un dedazo en la primera carga.
+  const {prev,next}=cargaVecinas(bus.id,ST.cargaFecha||hoyLocal());
+  const last=prev?prev.odometro:(bus.km||0), lbl=prev?`la carga del ${fechaCorta(prev.fecha)}`:'el odómetro de la unidad';
+  if(last>0 && o<last) warn.push({flag:'km_menor', msg:`Es menor que ${lbl} (${fmt(last)} km), ¿seguro?`});
+  else if(last>0 && o-last>CARGA_SALTO_KM) warn.push({flag:'salto_km', msg:`Salto de ${fmt(o-last)} km desde ${lbl}.`});
+  if(next && o>next.odometro) warn.push({flag:'km_mayor', msg:`Es mayor que la carga posterior del ${fechaCorta(next.fecha)} (${fmt(next.odometro)} km), ¿seguro?`});
   if(bus.capacidad_tanque && l>Number(bus.capacidad_tanque)) warn.push({flag:'exceso_litros', msg:`${fmtL(l)} L es más que la capacidad del tanque (${fmtL(bus.capacidad_tanque)} L).`});
   if(d.full){
     const hist=busCargas(bus.id);
@@ -3995,21 +4010,24 @@ function renderCargaEntry(opts){
 function cargaEntryRow(b,i,isLast){
   const d=cargaDraftOf(b.id), m=ST.cargaMsgs[b.id]||{err:[],warn:[]};
   const err=m.err.length, warn=m.warn.length;
+  const ref=cargaVecinas(b.id,ST.cargaFecha||hoyLocal()).prev?.odometro||b.km;
   return `<div class="eitem${err?' err':warn?' warn':''}"><div class="erow">
     <div class="u num${nombreLargo(b.name)?' long':''}" title="${escHtml(b.name)}">${escHtml(b.name)}</div>
     <div class="efield"><input id="cg-l-${i}" type="text" inputmode="decimal" enterkeyhint="next" autocomplete="off" placeholder="0" aria-label="Litros unidad ${escHtml(b.name)}"
       value="${escHtml(d.l)}" oninput="cargaInput(${i},'l',this.value)" onkeydown="cargaKey(event,${i},'l')"></div>
-    <div class="efield"><input id="cg-o-${i}" type="text" inputmode="numeric" enterkeyhint="${isLast?'done':'next'}" autocomplete="off" placeholder="${b.km?fmt(b.km):'0'}" aria-label="Odómetro unidad ${escHtml(b.name)}"
+    <div class="efield"><input id="cg-o-${i}" type="text" inputmode="numeric" enterkeyhint="${isLast?'done':'next'}" autocomplete="off" placeholder="${ref?fmt(ref):'0'}" aria-label="Odómetro unidad ${escHtml(b.name)}"
       value="${escHtml(d.o)}" oninput="cargaInput(${i},'o',this.value)" onkeydown="cargaKey(event,${i},'o')">
       <div class="ehint" id="cg-h-${i}">${cargaHint(b,d.o)}</div></div>
     <label class="etank"><input type="checkbox" ${d.full?'checked':''} onchange="cargaInput(${i},'full',this.checked)"><span>lleno</span></label>
   </div>${err?`<div class="emsg err">${m.err.join('<br>')}</div>`:warn?`<div class="emsg warn">${m.warn.map(w=>'⚠ '+w.msg).join('<br>')}</div>`:''}</div>`;
 }
-// Bajo el odómetro: última lectura en gris + delta en vivo.
+// Bajo el odómetro: carga anterior (a la fecha capturada) en gris + delta en vivo.
+// Sin cargas previas se muestra el odómetro de la unidad como guía.
 function cargaHint(bus,raw){
-  const last=bus.km||0, v=parseOdo(raw);
+  const {prev}=cargaVecinas(bus.id,ST.cargaFecha||hoyLocal());
+  const last=prev?prev.odometro:(bus.km||0), v=parseOdo(raw);
   if(!last) return 'Sin lectura previa';
-  let s=`Últ. ${fmt(last)}`;
+  let s=prev?`Últ. carga ${fmt(last)}`:`Odóm. ${fmt(last)}`;
   if(v!=null){ const dl=v-last; s+=` · <b class="${dl<0?'neg':dl>CARGA_SALTO_KM?'big':''}">${dl<0?'−':'+'}${fmt(Math.abs(dl))} km</b>`; }
   return s;
 }
@@ -4331,7 +4349,7 @@ function renderRevision(){
   let h=`<div class="small faint" style="margin:0 2px 10px">Cargas guardadas con advertencia. Márcalas correctas o elimínalas. Eliminar una carga no regresa el odómetro: si la lectura estaba mal, usa Ajustar odómetro.</div>`;
   list.forEach(c=>{
     const b=ST.buses.find(x=>x.id===c.bus_id);
-    const odoFlag=(c.flags||[]).some(f=>f==='km_menor'||f==='salto_km');
+    const odoFlag=(c.flags||[]).some(f=>f==='km_menor'||f==='km_mayor'||f==='salto_km');
     h+=`<div class="card2" style="margin-bottom:10px">
       <div class="between" style="align-items:flex-start">
         <div><span class="num" style="font-size:22px;font-weight:700">${b?escHtml(b.name):'—'}</span>
